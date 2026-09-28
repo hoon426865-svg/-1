@@ -6,7 +6,9 @@ test('QR 발급·유효기간·사업장·직원별 중복 사용 및 서버 시
  assert.equal((await e.call('/api/attendance/scan',{})).status,400);
  assert.equal((await e.call('/api/attendance/scan',await qrToken(f,'in','other-site'))).status,403);
  assert.equal((await e.call('/api/attendance/scan',await qrToken(f,'in','site-1',0))).status,400);
- const qr=await qrToken(f);const result=await e.call('/api/attendance/scan',{...qr,time:'01:00:00',employeeId:'e2'});
+ const qr=await qrToken(f);
+ assert.equal((await e.call('/api/attendance/scan',{...qr,employeeId:'e2'})).status,403);
+ const result=await e.call('/api/attendance/scan',{...qr,time:'01:00:00'});
  assert.equal(result.status,200);assert.equal(result.data.record.in,'08:30:00');assert.equal(result.data.record.employeeId,'e1');
  assert.equal((await e.call('/api/attendance/scan',qr)).status,409);
  assert.equal((await other.call('/api/attendance/scan',qr)).status,200);

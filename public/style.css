@@ -5,3 +5,5 @@
 .employee-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:20px}.employee-form>.primary,.employee-actions,.employee-status,.employee-form>.task-error{grid-column:1/-1}.employee-list .employee-form{border-top:1px solid #e0e6e7;padding-top:20px}.employee-actions{display:flex;gap:12px;flex-wrap:wrap}.employee-status{overflow-wrap:anywhere}@media(max-width:700px){.employee-form{grid-template-columns:1fr}}
 
 .danger{background:#fff0ef;color:#a22929;border:1px solid #e6b7b3;border-radius:8px;min-height:49px;padding:12px 18px}.danger:hover{background:#ffe0dd}
+
+.auth-card{max-width:480px;margin:32px auto}.auth-card label{margin-top:18px}.account{display:flex;align-items:center;gap:12px;font-size:14px}.account button{padding:8px;min-height:40px}@media(max-width:700px){.topbar{height:auto;min-height:64px;flex-wrap:wrap;gap:12px;padding:12px 16px}.account{flex-wrap:wrap}}

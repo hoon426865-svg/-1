@@ -8,11 +8,9 @@
   <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="/" aria-label="온워크 홈"><span class="mark">✓</span> 온워크 <span class="brand-sub">ONWORK</span></a><span class="prototype">시제품</span></header>
-  <div class="demo-notice"><strong>체험용 시제품</strong><span>로그인·QR 인증·영구 저장이 없습니다. 예시 데이터이며, 입력한 내용은 새로고침하면 초기화됩니다.</span></div>
+  <header class="topbar"><a class="brand" href="/" aria-label="온워크 홈"><span class="mark">✓</span> 온워크 <span class="brand-sub">ONWORK</span></a><div id="account" class="account"></div></header>
   <main>
-    <nav class="view-switch" aria-label="화면 선택"><button id="employee-tab" aria-pressed="true">직원 화면</button><button id="admin-tab" aria-pressed="false">관리자 화면</button></nav>
-    <div id="screen"></div>
+    <div id="screen"><p>로그인 상태를 확인하고 있습니다.</p></div>
     <footer>모든 시각은 한국 시간 기준 · 야근 검토 표시는 승인이나 수당 확정이 아닙니다.</footer>
   </main>
   <div id="notice" role="status" aria-live="polite"></div>
