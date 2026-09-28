@@ -1,0 +1,65 @@
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+*.log
+.DS_Store
+
+# Local environment and credentials (never commit real values)
+.env
+.env.*
+!.env.example
+.npmrc
+.netrc
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+id_rsa*
+id_ed25519*
+credentials.json
+service-account*.json
+*credentials*.json
+*secret*.json
+
+# Runtime employee data and exports belong here, never in source files
+data/
+private/
+uploads/
+exports/
+employee-data/
+*.csv
+*.tsv
+*.xls
+*.xlsx
+
+# Databases, journals and dumps
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.sql
+*.dump
+
+# Backup artifacts; keep scripts/backup.mjs and lib/backup.mjs as source
+backup/
+backups/
+*.bak
+*.backup
+*.old
+*~
+*.zip
+*.tar
+*.gz
+*.tgz
+*.7z
+
+# Local agent configuration
+.agents/
+.codex/

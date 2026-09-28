@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>온워크 · 출퇴근과 생산 기록</title>
+  <meta name="description" content="직원 출퇴근 및 작업별 생산량 관리 시제품">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231c5949'/%3E%3Cpath d='M8 17l5 5L24 10' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/" aria-label="온워크 홈"><span class="mark">✓</span> 온워크 <span class="brand-sub">ONWORK</span></a><span class="prototype">시제품</span></header>
+  <div class="demo-notice"><strong>체험용 시제품</strong><span>로그인·QR 인증·영구 저장이 없습니다. 예시 데이터이며, 입력한 내용은 새로고침하면 초기화됩니다.</span></div>
+  <main>
+    <nav class="view-switch" aria-label="화면 선택"><button id="employee-tab" aria-pressed="true">직원 화면</button><button id="admin-tab" aria-pressed="false">관리자 화면</button></nav>
+    <div id="screen"></div>
+    <footer>모든 시각은 한국 시간 기준 · 야근 검토 표시는 승인이나 수당 확정이 아닙니다.</footer>
+  </main>
+  <div id="notice" role="status" aria-live="polite"></div>
+</body>
+</html>

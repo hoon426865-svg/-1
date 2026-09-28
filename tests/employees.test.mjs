@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeDemo, saveEmployee, setEmployeeActive, activeEmployees, clockIn, clockOut, recordProduction, totals, saveTask } from '../public/domain.js';
+const now = { date: '2026-09-28', time: '08:30:00' };
+test('같은 이름의 직원도 고유 ID로 기록을 분리하고 수정 후 연결을 유지한다', () => {
+  const s = makeDemo(now.date);
+  assert.equal(saveEmployee(s, { name: '김민수', number: 'emp004', team: '생산 2팀' }), '');
+  const id = s.employees.at(-1).id;
+  assert.notEqual(id, 'e1');
+  for (const employee of ['e1', id]) assert.equal(clockIn(s, employee, now), '');
+  assert.equal(clockOut(s, id, { ...now, time: '18:00:00' }), '');
+  assert.equal(s.attendance.find(r => r.employeeId === 'e1' && r.date === now.date).out, null);
+  assert.equal(recordProduction(s, 'e1', now, 't1', '10', '1'), '');
+  assert.equal(recordProduction(s, id, now, 't1', '20', '2'), '');
+  assert.equal(saveEmployee(s, { name: '새 이름', number: 'EMP005', team: '검수팀' }, id), '');
+  assert.deepEqual(totals(s.production, now.date, 'e1'), { good: 10, bad: 1 });
+  assert.deepEqual(totals(s.production, now.date, id), { good: 20, bad: 2 });
+  assert.equal(s.employees.at(-1).id, id);
+});
+test('비활성화는 기록과 합계를 보존하고 입력을 차단하며 다시 활성화할 수 있다', () => {
+  const s = makeDemo(now.date);
+  const attendance = structuredClone(s.attendance), production = structuredClone(s.production);
+  const sum = totals(s.production, now.date);
+  assert.equal(setEmployeeActive(s, 'e2', false), '');
+  assert.equal(activeEmployees(s).some(e => e.id === 'e2'), false);
+  assert.ok(clockIn(s, 'e2', now)); assert.ok(clockOut(s, 'e2', now));
+  assert.ok(recordProduction(s, 'e2', now, 't1', '1', '0'));
+  assert.deepEqual(s.attendance, attendance); assert.deepEqual(s.production, production);
+  assert.deepEqual(totals(s.production, now.date), sum);
+  assert.ok(saveEmployee(s, { name: '신입', number: ' emp002 ', team: '팀' }));
+  assert.equal(setEmployeeActive(s, 'e2', true), '');
+  assert.equal(clockOut(s, 'e2', { ...now, time: '17:30:00' }), '');
+});
+test('사번 중복 추가 및 수정, 빈 필드, 없는 직원의 기록 입력을 거부한다', () => {
+  const s = makeDemo(now.date), before = structuredClone(s);
+  for (const values of [{ name: '', number: 'NEW', team: '팀' }, { name: '직원', number: '', team: '팀' }, { name: '직원', number: 'NEW', team: ' ' }, { name: '직원', number: 'emp001', team: '팀' }]) assert.ok(saveEmployee(s, values));
+  assert.ok(saveEmployee(s, { name: '직원', number: 'EMP002', team: '팀' }, 'e1'));
+  assert.ok(clockIn(s, 'missing', now)); assert.ok(clockOut(s, 'missing', now));
+  assert.ok(recordProduction(s, 'missing', now, 't1', '1', '0'));
+  assert.deepEqual(s, before);
+  assert.equal(saveEmployee(s, { name: '김민수', number: 'EMP001', team: '생산 1팀' }, 'e1'), '');
+});
+test('모두 비활성인 경우와 직원 관리 후 작업 관리 및 집계', () => {
+  const s = makeDemo(now.date);
+  s.employees.forEach(e => setEmployeeActive(s, e.id, false));
+  assert.deepEqual(activeEmployees(s), []);
+  assert.equal(saveEmployee(s, { name: '신입', number: 'NEW', team: '팀' }), '');
+  const id = activeEmployees(s)[0].id;
+  assert.equal(saveTask(s, '새 작업'), '');
+  const taskId = s.tasks.at(-1).id;
+  assert.equal(saveTask(s, '수정 작업', taskId), '');
+  assert.equal(recordProduction(s, id, now, taskId, '4', '1'), '');
+  assert.deepEqual(totals(s.production, now.date), { good: 100, bad: 3 });
+  assert.equal(makeDemo(now.date).employees.length, 3);
+});

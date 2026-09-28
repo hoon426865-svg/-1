@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeDemo, employeeDeletionImpact, confirmEmployeeDeletion, totals, needsReview, saveEmployee, activeEmployees, setEmployeeActive } from '../public/domain.js';
+test('확인 전에 전체 날짜의 건수를 표시하고 취소 시 변경하지 않는다', () => {
+  const s = makeDemo('2026-09-28'), before = structuredClone(s);
+  assert.deepEqual(employeeDeletionImpact(s, 'e1'), { attendance: 1, production: 2, overtime: 1 });
+  let called = false;
+  assert.equal(confirmEmployeeDeletion(s, 'e1', message => {
+    called = true;
+    for (const text of ['EMP001', 'e1', '전체 날짜', '출퇴근 기록: 1건', '생산량 기록: 2건', '야근 검토 기록: 1건', '출퇴근 기록에 포함', '운영용 영구 삭제가 아니']) assert.ok(message.includes(text));
+    assert.deepEqual(s, before);
+    return false;
+  }), 'cancelled');
+  assert.ok(called); assert.deepEqual(s, before);
+});
+test('명시적 확인 후 대상 ID만 제거하고 날짜별 생산량·출근·야근 합계 갱신', () => {
+  const s = makeDemo('2026-09-28');
+  s.employees[1].name = s.employees[0].name;
+  s.production.push({ employeeId: 'e1', date: '2026-09-28', good: 7, bad: 1 });
+  const otherEmployees = structuredClone(s.employees.filter(e => e.id !== 'e1'));
+  const otherAttendance = structuredClone(s.attendance.filter(r => r.employeeId !== 'e1'));
+  const otherProduction = structuredClone(s.production.filter(r => r.employeeId !== 'e1'));
+  const tasks = structuredClone(s.tasks);
+  assert.equal(confirmEmployeeDeletion(s, 'e1', () => true), 'deleted');
+  assert.deepEqual(s.employees, otherEmployees);
+  assert.deepEqual(s.attendance, otherAttendance);
+  assert.deepEqual(s.production, otherProduction);
+  assert.deepEqual(s.tasks, tasks);
+  assert.deepEqual(totals(s.production, '2026-09-27'), { good: 0, bad: 0 });
+  assert.deepEqual(totals(s.production, '2026-09-28'), { good: 96, bad: 2 });
+  assert.equal(s.attendance.filter(r => r.date === '2026-09-27').length, 1);
+  assert.equal(s.attendance.filter(needsReview).length, 0);
+  assert.equal(activeEmployees(s).some(e => e.id === 'e1'), false);
+  assert.equal(saveEmployee(s, { name: '재등록', number: 'EMP001', team: '팀' }), '');
+  assert.notEqual(s.employees.at(-1).id, 'e1');
+});
+test('퇴사 처리와 삭제를 구분하고 기록 없는 직원 및 없는 ID 처리', () => {
+  const s = makeDemo('2026-09-28');
+  const before = structuredClone(s);
+  setEmployeeActive(s, 'e1', false);
+  assert.deepEqual(s.attendance, before.attendance);
+  assert.deepEqual(s.production, before.production);
+  assert.deepEqual(employeeDeletionImpact(s, 'e3'), { attendance: 0, production: 0, overtime: 0 });
+  assert.equal(confirmEmployeeDeletion(s, 'e1', () => true), 'deleted');
+  assert.equal(confirmEmployeeDeletion(s, 'e3', () => true), 'deleted');
+  const after = structuredClone(s);
+  assert.equal(confirmEmployeeDeletion(s, 'missing', () => { throw Error('확인 호출 금지'); }), 'missing');
+  assert.deepEqual(s, after);
+  assert.equal(confirmEmployeeDeletion(s, 'e2', () => 'true'), 'cancelled');
+  assert.deepEqual(s, after);
+  assert.equal(confirmEmployeeDeletion(s, 'e2', () => true), 'deleted');
+  assert.deepEqual(s.employees, []); assert.deepEqual(s.attendance, []); assert.deepEqual(s.production, []);
+});
