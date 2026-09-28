@@ -130,3 +130,42 @@ test('server.mjs 실행 진입점에서 로그인하고 저장된 본인 기록�
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('Codespaces 출처를 사용하는 실제 HTTP 최초 설정→로그인→관리자 직원 생성·재설정', { timeout: 15000 }, async () => {
+  const { openDatabase } = await import('../lib/db.mjs');
+  const { config } = await import('../lib/security.mjs');
+  const { randomUUID } = await import('node:crypto');
+  const db = openDatabase(':memory:');
+  const settings = config({ CODESPACE_NAME: 'http-test', GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN: 'app.github.dev', PORT: '3000' });
+  const server = createHttpServer(createApplication(db, settings), settings.origin);
+  server.listen(0, '127.0.0.1');
+  try {
+    await once(server, 'listening');
+    const local = `http://127.0.0.1:${server.address().port}`;
+    const headers = { origin: 'http://localhost:3000', referer: settings.origin + '/setup', 'sec-fetch-site': 'same-origin', 'x-onwork-origin': settings.origin, 'content-type': 'application/json' };
+    const post = (path, body, extra = {}) => fetch(local + path, { method: 'POST', headers: { ...headers, ...extra }, body: JSON.stringify(body), redirect: 'manual' });
+    assert.equal((await (await fetch(local + '/api/setup')).json()).required, true);
+    assert.equal((await fetch(local + '/setup')).status, 200);
+    const password = randomUUID(), body = { login: 'FIRST', password, confirmation: password };
+    assert.equal((await post('/api/setup', body, { origin: 'http://localhost:3000', referer: '' })).status, 403);
+    assert.equal((await post('/api/setup', body)).status, 201);
+    assert.equal((await post('/api/setup', body)).status, 409);
+    assert.equal((await fetch(local + '/setup', { redirect: 'manual' })).status, 303);
+    const login = await post('/api/login', { login: 'FIRST', password });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get('set-cookie').split(';')[0];
+    const me = await (await fetch(local + '/api/me', { headers: { cookie } })).json();
+    const adminHeaders = { cookie, 'x-csrf-token': me.csrf };
+    assert.equal((await fetch(local + '/admin', { headers: { cookie } })).status, 200);
+    const employee = await post('/api/admin/employee', { name: '시험', number: 'TEST-1', team: '시험팀', password: randomUUID(), reason: '시험 계정', role: 'admin' }, adminHeaders);
+    assert.equal(employee.status, 200);
+    const id = (await employee.json()).id;
+    assert.equal(db.prepare('SELECT role FROM users WHERE employee_id=?').get(id).role, 'employee');
+    const reset = { id, password: randomUUID(), reason: '시험 재설정' };
+    assert.equal((await post('/api/admin/reset-password', reset)).status, 401);
+    assert.equal((await post('/api/admin/reset-password', reset, adminHeaders)).status, 200);
+  } finally {
+    const closed = new Promise(resolve => server.close(resolve));
+    server.closeAllConnections();await closed;db.close();
+  }
+});

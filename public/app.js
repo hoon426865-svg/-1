@@ -18,8 +18,8 @@ function clearSession(message = '') {
 }
 async function api(path, body) {
   const response = await fetch(path, {
-    method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': me?.csrf || '' },
+    method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'same-origin',
+    headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': me?.csrf || '', 'X-Onwork-Origin': location.origin },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await response.json();
@@ -31,7 +31,9 @@ async function api(path, body) {
       if (current.status === 401) clearSession('다시 로그인해 주세요.');
       else if (current.ok) { me = await current.json(); if (me.mustChange) renderPassword(); }
     }
-    throw Error(data.error || '요청에 실패했습니다.');
+    const error = Error(data.error || '요청에 실패했습니다.');
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -54,6 +56,30 @@ function renderLogin() {
     <label>비밀번호<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
     <p role="alert" class="task-error"></p><button class="primary" type="submit">로그인</button></form></section>`;
   bindForm('#login-form', async body => { await api('/api/login', body); await load(); });
+}
+function renderSetup() {
+  me = null; state = null;
+  account.replaceChildren();
+  history.replaceState(null, '', '/setup');
+  screen.innerHTML = `<section class="card auth-card"><h1>최초 관리자 설정</h1><p>온워크를 관리할 첫 계정을 만드세요. 최초 한 번만 생성할 수 있으며, 직원 계정은 이후 관리자 화면에서 등록합니다.</p>
+    <form id="setup-form"><label>관리자 계정<input name="login" autocomplete="username" pattern="[A-Za-z0-9-]{1,30}" maxlength="30" required></label>
+    <label>비밀번호 (12~128자)<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+    <label>비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+    <p role="alert" class="task-error"></p><button class="primary" type="submit">관리자 계정 만들기</button></form></section>`;
+  bindForm('#setup-form', async (body, form) => {
+    if (body.password !== body.confirmation) throw Error('비밀번호 확인이 일치하지 않습니다.');
+    try {
+      await api('/api/setup', body);
+      form.reset();
+      clearSession('관리자 계정을 만들었습니다. 설정한 계정으로 로그인하세요.');
+    } catch (error) {
+      if (error.status !== 409) throw error;
+      const setup = await api('/api/setup');
+      if (setup.required) throw error;
+      form.reset();
+      clearSession('초기 설정이 이미 완료되었습니다. 관리자 계정으로 로그인하세요.');
+    }
+  });
 }
 function renderAccount() {
   account.innerHTML = `<span>${esc(me.login)} · ${me.role === 'admin' ? '관리자' : '직원'}</span><button class="secondary" id="refresh">새로고침</button><button class="secondary" id="logout">로그아웃</button>`;
@@ -79,6 +105,24 @@ function renderPassword() {
 }
 async function load() {
   const requestEpoch = ++epoch;
+  const setup = await api('/api/setup');
+  if (requestEpoch !== epoch) return;
+  if (location.origin !== setup.appOrigin) {
+    me = null; state = null;
+    account.replaceChildren();
+    screen.innerHTML = `<section class="card auth-card"><h1>앱 접속 주소 확인</h1><p>현재 미리보기 주소가 서버에 설정된 주소와 다릅니다. 아래 주소를 별도 브라우저 탭에서 열어 주세요.</p><a href="${esc(setup.appOrigin)}/login" target="_blank" rel="noopener noreferrer">${esc(setup.appOrigin)}</a></section>`;
+    return;
+  }
+  // Diagnose the real forwarded POST before asking for any credentials.
+  try { await api('/api/origin-check', {}); }
+  catch (error) {
+    me = null; state = null; account.replaceChildren();
+    screen.innerHTML = `<section class="card auth-card"><h1>접속 확인</h1><p role="alert">${esc(error.message)}</p><button class="primary" id="retry-origin">다시 확인</button></section>`;
+    document.querySelector('#retry-origin').onclick = () => load().catch(failure => notice(failure.message));
+    return;
+  }
+  if (requestEpoch !== epoch) return;
+  if (setup.required) { renderSetup(); return; }
   const user = await api('/api/me');
   if (requestEpoch !== epoch) return;
   me = user;
@@ -147,7 +191,7 @@ function renderAdmin() {
     }).join('')}</tbody></table></div></section>
     <section class="card"><h2>직원 관리</h2><p>사번이 로그인 계정이 됩니다. 임시 비밀번호는 첫 로그인 후 변경해야 합니다.</p>
     <form id="add-employee-form" class="employee-form">${employeeFields()}<label>임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="primary">직원 추가</button><p role="alert" class="task-error"></p></form>
-    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form>`).join('')}</div></section>
+    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form><form class="employee-form reset-password-form" data-id="${esc(person.id)}"><label>${esc(person.number)} 새 임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>임시 비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="secondary">비밀번호 재설정</button><p class="small">이 직원의 모든 로그인 세션이 종료되며, 다음 로그인 시 비밀번호를 변경해야 합니다.</p><p role="alert" class="task-error"></p></form>`).join('')}</div></section>
     <section class="card"><h2>작업 종류 관리</h2><form id="add-task-form" class="task-form"><label>새 작업 이름<input name="name" maxlength="40" required></label>${reasonField()}<button class="primary">작업 추가</button><p role="alert" class="task-error"></p></form>
     ${state.tasks.map(task => `<form class="task-form edit-task-form" data-id="${esc(task.id)}"><label>작업 이름<input name="name" value="${esc(task.name)}" maxlength="40" required></label>${reasonField()}<button class="secondary">이름 수정</button><p role="alert" class="task-error"></p></form>`).join('')}</section>`;
   document.querySelector('#admin-date').onchange = event => { if (event.target.value) { selectedDate = event.target.value; render(); } };
@@ -163,6 +207,13 @@ function renderAdmin() {
       finally { event.target.disabled = false; }
     };
   });
+  state.employees.forEach(person => bindForm(`.reset-password-form[data-id="${person.id}"]`, async (body, form) => {
+    if (body.password !== body.confirmation) throw Error('임시 비밀번호 확인이 일치하지 않습니다.');
+    await api('/api/admin/reset-password', { id: person.id, password: body.password, reason: body.reason });
+    form.reset();
+    await load();
+    notice('임시 비밀번호를 재설정했습니다. 직원에게 안전하게 전달하세요.');
+  }));
   bindForm('#add-task-form', body => save('/api/admin/task', body, '작업을 추가했습니다.'));
   state.tasks.forEach(task => bindForm(`.edit-task-form[data-id="${task.id}"]`, body => save('/api/admin/task', { ...body, id: task.id, version: task.version }, '작업 이름을 수정했습니다.')));
 }

@@ -97,3 +97,31 @@ test('잘못된 비밀번호·만료된 세션은 로그인 또는 업무 접근
   assert.equal(f.db.prepare('SELECT count(*) n FROM production').get().n,0);
  } finally { f.db.close(); }
 });
+
+test('직원 생성·비밀번호 재설정은 관리자만 허용하고 재설정 후 기존 세션·비밀번호를 무효화한다', async () => {
+ const f=fixture();try {
+  const guest=f.client(),staff=f.client(),other=f.client(),admin=f.client();
+  await staff.login('001');await other.login('002');await admin.login('ADMIN');
+  const newPassword=f.key();
+  const reset={id:'e1',password:newPassword,reason:'본인 요청'};
+  const employee={name:'시험 직원',number:'TEST-NEW',team:'시험',password:f.key(),reason:'시험 계정'};
+  for(const [path,body] of [['/api/admin/employee',employee],['/api/admin/reset-password',reset]]) {
+   assert.equal((await guest.call(path,body)).status,401);
+   assert.equal((await staff.call(path,body)).status,403);
+  }
+  assert.equal((await admin.call('/api/admin/employee',employee)).status,200);
+  assert.equal((await admin.call('/api/admin/reset-password',reset)).status,200);
+  assert.equal((await staff.call('/api/state')).status,401);
+  assert.equal((await staff.login('001')).status,401);
+  assert.equal((await staff.login('001',newPassword)).status,200);
+  assert.equal((await staff.call('/api/me')).data.mustChange,true);
+  assert.equal((await staff.call('/api/state')).status,403);
+  assert.equal((await other.call('/api/state')).status,200);
+  const finalPassword=f.key();
+  assert.equal((await staff.call('/api/password',{currentPassword:newPassword,password:finalPassword})).status,200);
+  assert.equal((await staff.login('001',finalPassword)).status,200);
+  assert.equal((await staff.call('/api/state')).status,200);
+  const audit=JSON.stringify((await admin.call('/api/admin/audit')).data);
+  for(const secret of [newPassword,finalPassword,employee.password]) assert.equal(audit.includes(secret),false);
+ } finally { f.db.close(); }
+});
