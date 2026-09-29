@@ -169,3 +169,35 @@ test('Codespaces 출처를 사용하는 실제 HTTP 최초 설정→로그인→
     server.closeAllConnections();await closed;db.close();
   }
 });
+
+test('HTTP 근무 변경 신청 모듈·직원 신청·관리자 처리·이력·집계 연결', {timeout:15000}, async()=>{
+  const f=fixture();let application;
+  const server=createHttpServer(request=>application(request),'http://127.0.0.1');
+  server.listen(0,'127.0.0.1');
+  try {
+    await once(server,'listening');
+    const origin=`http://127.0.0.1:${server.address().port}`;
+    application=createApplication(f.db,{...f.config,origin});
+    const module=await fetch(origin+'/work-requests.js');
+    assert.equal(module.status,200);assert.match(module.headers.get('content-type'),/javascript/);
+    assert.match(await module.text(),/mountWorkRequests/);
+    async function client(login) {
+      const response=await fetch(origin+'/api/login',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify({login,password:f.password})});
+      assert.equal(response.status,200);
+      const cookie=response.headers.get('set-cookie').split(';')[0];
+      const me=await (await fetch(origin+'/api/me',{headers:{cookie}})).json();
+      return (path,body)=>fetch(origin+path,{method:body?'POST':'GET',headers:{cookie,origin,'content-type':'application/json','x-csrf-token':me.csrf},body:body?JSON.stringify(body):undefined});
+    }
+    const employee=await client('001'),admin=await client('ADMIN');
+    const response=await employee('/api/work-requests',{type:'overtime',startDate:'2026-10-01',endDate:'2026-10-01',allDay:false,startTime:'18:00',endTime:'20:00',reason:'시험 근무'});
+    assert.equal(response.status,200);const r=await response.json();
+    const body={id:r.id,version:r.version,action:'approved',comment:'일정 확인'};
+    assert.equal((await employee('/api/admin/work-requests/decision',body)).status,403);
+    assert.equal((await admin('/api/admin/work-requests/decision',body)).status,200);
+    assert.equal((await admin('/api/admin/work-requests/decision',body)).status,409);
+    const history=await (await employee('/api/work-requests/history?id='+r.id)).json();
+    assert.deepEqual(history.map(h=>h.action),['created','approved']);
+    const report=await (await admin('/api/admin/work-requests/report?year=2026&month=10&employeeId=e1')).json();
+    assert.equal(report.summaries[0].overtimeMinutes,120);
+  }finally{const closed=new Promise(resolve=>server.close(resolve));server.closeAllConnections();await closed;f.db.close();}
+});

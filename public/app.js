@@ -1,4 +1,5 @@
 import { totals, needsReview } from './domain.js';
+import { mountWorkRequests } from './work-requests.js';
 
 const screen = document.querySelector('#screen');
 const account = document.querySelector('#account');
@@ -138,6 +139,9 @@ async function load() {
 function render() {
   if (!me || !state) return;
   if (me.role === 'admin') renderAdmin(); else renderEmployee();
+  const requests = document.createElement('div');
+  screen.append(requests);
+  mountWorkRequests({root:requests,api,me,employees:state.employees,today:state.today});
 }
 async function save(path, body, message) {
   await api(path, body);

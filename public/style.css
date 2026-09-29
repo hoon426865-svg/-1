@@ -7,3 +7,5 @@
 .danger{background:#fff0ef;color:#a22929;border:1px solid #e6b7b3;border-radius:8px;min-height:49px;padding:12px 18px}.danger:hover{background:#ffe0dd}
 
 .auth-card{max-width:480px;margin:32px auto}.auth-card label{margin-top:18px}.account{display:flex;align-items:center;gap:12px;font-size:14px}.account button{padding:8px;min-height:40px}@media(max-width:700px){.topbar{height:auto;min-height:64px;flex-wrap:wrap;gap:12px;padding:12px 16px}.account{flex-wrap:wrap}}
+
+.request-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:20px 0;align-items:end}.request-form .wide{grid-column:1/-1}.request-form textarea{display:block;width:100%;min-height:80px;margin-top:8px;padding:12px;border:1px solid #d5dedf;border-radius:8px;font:inherit}.request-item{border-top:1px solid #e0e6e7;padding:20px 0;overflow-wrap:anywhere}.request-item h3{font-size:16px}.request-text{white-space:pre-wrap}.request-item summary{cursor:pointer;font-weight:650}.request-form textarea:focus-visible{outline:3px solid #2e8bce;outline-offset:3px}@media(max-width:700px){.request-form{grid-template-columns:1fr}}
