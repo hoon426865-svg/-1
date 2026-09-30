@@ -1,0 +1,40 @@
+services:
+  app:
+    image: ${ONWORK_IMAGE:?Verified image is required}
+    pull_policy: never
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      NODE_ENV: production
+      STORAGE_ROOT: /data
+      APP_ORIGIN: ${APP_ORIGIN:?Set the actual HTTPS origin}
+      SITE_ID: ${SITE_ID:?Keep the existing site ID}
+      DATABASE_PATH: /data/${DB_FILENAME:?Set the existing database filename}
+      PORT: '3000'
+      HOST: 0.0.0.0
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - type: bind
+        source: ${DATA_DIR:?Set the existing absolute data directory}
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${BACKUP_DIR:?Set the existing absolute backup directory}
+        target: /backups
+        bind:
+          create_host_path: false
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'

@@ -27,7 +27,7 @@ npm start
 
 앱 시작에는 `DATABASE_PATH`가 반드시 필요합니다. `.env`를 자동으로 읽지 않으므로 환경 변수를 셸 또는 실행 환경에서 설정하세요.
 
-브라우저에서 `APP_ORIGIN` 주소를 열어 관리자 계정으로 로그인하세요. Codespaces에서는 3000 포트를 전달하고 **포트(Ports) → 브라우저에서 열기**로 접속하세요. `APP_ORIGIN`을 지정하지 않으면 `CODESPACE_NAME`, `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`, `PORT`에서 정확한 HTTPS 주소를 자동으로 계산합니다. 일반 로컬 실행은 `http://localhost:3000`을 기본값으로 사용합니다. 직접 주소를 지정하려면 **브라우저에 표시되는 정확한 HTTP(S) 주소(끝 슬래시·경로 제외)**를 `APP_ORIGIN`으로 설정하세요. 명시한 값이 자동 설정보다 우선합니다. 다른 포트를 쓰면 `PORT`와 `APP_ORIGIN`을 함께 변경합니다. 기본 수신 주소는 `0.0.0.0`이며 `HOST`로 변경할 수 있습니다. HTTPS 주소에서는 Secure 쿠키를 사용합니다. 운영 환경에서는 `NODE_ENV=production`, HTTPS `APP_ORIGIN`, `SITE_ID`를 지정하세요.
+브라우저에서 `APP_ORIGIN` 주소를 열어 관리자 계정으로 로그인하세요. Codespaces에서는 3000 포트를 전달하고 **포트(Ports) → 브라우저에서 열기**로 접속하세요. `APP_ORIGIN`을 지정하지 않으면 `CODESPACE_NAME`, `GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN`, `PORT`에서 정확한 HTTPS 주소를 자동으로 계산합니다. 일반 로컬 실행은 `http://localhost:3000`을 기본값으로 사용합니다. 직접 주소를 지정하려면 **브라우저에 표시되는 정확한 HTTP(S) 주소(끝 슬래시·경로 제외)**를 `APP_ORIGIN`으로 설정하세요. 명시한 값이 자동 설정보다 우선합니다. 다른 포트를 쓰면 `PORT`와 `APP_ORIGIN`을 함께 변경합니다. 기본 수신 주소는 `0.0.0.0`이며 `HOST`로 변경할 수 있습니다. HTTPS 주소에서는 Secure 쿠키를 사용합니다. 운영 환경에서는 `NODE_ENV=production`, HTTPS `APP_ORIGIN`, `SITE_ID`, 영구 저장소의 절대 경로 `STORAGE_ROOT`를 지정하세요.
 
 ## 직원 계정과 사용 방법
 
@@ -44,7 +44,7 @@ npm start
 
 화면에서의 일회성 최초 관리자 생성, 로그인·로그아웃·최초 비밀번호 변경, 직원 본인 기록 조회·입력, 관리자 직원 관리·전체 집계를 화면과 서버에 연결했습니다. DB 저장 내용은 재시작 후에도 유지됩니다.
 
-QR·백업 기능은 기존 서버 코드와 스크립트를 유지하며 이번 단계에서 확장하지 않았습니다. QR 표시·카메라 스캔, 관리자 기록 정정·야근 승인·감사 이력·영구 삭제용 화면은 아직 연결하지 않았습니다. 기존 체험판의 메모리 완전 삭제 버튼은 운영 DB를 삭제하는 버튼으로 전환하지 않았습니다. 야근 검토 표시는 승인이나 수당 확정이 아닙니다.
+QR 기능은 기존 서버 코드를 유지합니다. 백업·복구 운영 절차는 아래 상시 서버 안내에 정리했습니다. QR 표시·카메라 스캔, 관리자 기록 정정·야근 승인·감사 이력·영구 삭제용 화면은 아직 연결하지 않았습니다. 기존 체험판의 메모리 완전 삭제 버튼은 운영 DB를 삭제하는 버튼으로 전환하지 않았습니다. 야근 검토 표시는 승인이나 수당 확정이 아닙니다.
 
 `lib/backup.mjs`, `scripts/backup.mjs`, `scripts/restore.mjs`는 기존 DB 백업·복구 코드입니다. 자동 검증은 임시 DB에서 수행하며 실제 앱의 최초 관리자 정보는 사용자가 화면에서 직접 입력합니다.
 
@@ -58,7 +58,7 @@ npm test
 
 ### 검증 결과와 브라우저 확인 대기 항목
 
-Node.js 24.21.0에서 기존 Node 테스트 도구로 API·DB·실제 HTTP 서버와 `server.mjs` 실행 및 재시작을 검사했습니다. HTTP 테스트에서 확인하는 HTML 응답 성공은 브라우저 렌더링이나 폼 조작 성공을 뜻하지 않습니다. 브라우저에서 로그인부터 화면 조작까지의 확인은 아직 수행하지 않았습니다. Playwright 설치는 더 시도하지 않습니다.
+Node.js 24.21.0에서 기존 Node 테스트 도구로 API·DB·실제 HTTP 서버와 `server.mjs` 실행 및 재시작을 검사했습니다. HTTP 테스트에서 확인하는 HTML 응답 성공은 브라우저 렌더링이나 폼 조작 성공을 뜻하지 않습니다. 신청·승인 화면은 Codespaces에서 사용자가 직접 확인했습니다. 운영 서버의 HTTPS·쿠키·영구 저장소 동작은 실제 배포 후 별도로 확인해야 합니다.
 
 샌드박스에서 `tests/http.test.mjs`가 실패한 원인은 `listen EPERM: operation not permitted 127.0.0.1`이었습니다. 로컬 포트 실행이 허용된 환경에서 같은 테스트를 실행해 통과했습니다. 테스트를 건너뛰거나 실패를 성공으로 처리하지 않습니다. 개별 검사와 자세한 오류 출력은 다음 명령으로 확인할 수 있습니다.
 
@@ -139,3 +139,116 @@ DB 시작 시 `work_requests`, `work_request_history` 테이블과 보존용 트
 3. 직원 화면의 **새로고침**을 눌러 결과·처리자·처리 시각·의견과 이력을 확인합니다.
 4. 관리자 **직원별 월간·연간 내역**에서 해당 월 또는 연간 전체를 조회하고 직원 상세의 신청·출퇴근·생산량을 확인합니다.
 5. 정정은 관리자 재검토 → 직원 수정·재신청 → 관리자 재처리 순서로 확인합니다. 이전 처리 이력은 계속 남습니다. 실제 DB에서 입력한 신청은 보존되므로 실제 필요한 신청으로 확인하거나 별도 시험 DB를 사용하세요.
+
+## 상시 서버 + Cloudflare 고정 주소 운영 준비
+
+운영 방식은 **Linux 상시 서버 1대 + Node·SQLite 컨테이너 1개 + 호스트 영구 저장소 + Cloudflare Tunnel**입니다. 서버·도메인·접속정보는 아직 결정하지 않았습니다. 이 저장소를 push해도 `DEPLOY_ENABLED=true`를 설정하기 전에는 운영 배포가 실행되지 않습니다. Railway 설정 파일은 과거 검토안이며 이번 자동 배포에서 사용하지 않습니다.
+
+### 데이터 보존 원칙
+
+- 운영 시작 시 `STORAGE_ROOT` 내부의 기존 DB 파일·스키마·무결성·외래키를 검사합니다. 심볼릭 링크로 저장소 밖을 가리키는 경로도 거부합니다. Compose는 `STORAGE_ROOT=/data`를 설정합니다. 경로 누락, 빈 파일, 잘못된 DB이면 **시작을 거부**합니다. 새 관리자를 자동 생성하지 않습니다. 처음 빈 DB를 만드는 개발용 실행과 운영 실행은 구분합니다.
+- DB는 이미지나 Git이 아닌 호스트 `DATA_DIR`에 보관합니다. Compose는 해당 디렉터리가 없으면 생성하지 않고 실패합니다. DB 경로와 `SITE_ID`는 이전에 사용하던 값을 기준으로 결정합니다.
+- `deploy/compose.yaml`의 앱은 UID/GID 1000으로 실행됩니다. DB 디렉터리와 파일·백업 디렉터리는 이 계정이 읽고 쓸 수 있어야 합니다. 공유 네트워크 파일시스템 대신 서버의 로컬 영구 디스크를 사용하고 앱 복제본은 하나만 둡니다.
+- `/healthz`는 최소 상태 확인이며 백업·전체 무결성 검사·브라우저 검증을 대신하지 않습니다. 점검 모드에서도 200일 수 있습니다.
+- 기존 `DATABASE_PATH`에 다른 **정상 DB**를 지정한 실수까지 자동 판별할 수는 없습니다. 이전 전후 계정·업무·신청·이력의 건수와 내용을 보호된 환경에서 비교합니다.
+
+### 1. 서버가 정해진 뒤 최초 준비
+
+아래 경로는 서버 안의 운영 표준 경로이며 서버 주소가 아닙니다. 아직 다음 설치·접속·이전·배포를 실행한 상태가 아닙니다.
+
+1. x86-64 Linux 서버를 준비합니다. CI는 Linux amd64 이미지를 생성합니다. ARM 서버를 선택한다면 먼저 빌드·검증 대상도 변경해야 합니다. Docker Engine, Compose v2.20 이상, Bash, `flock`, SSH 서버를 설치하고 Docker를 부팅 시 자동 시작하도록 설정합니다.
+2. 배포 전용 SSH 계정을 만들고 Docker 실행 권한, `/var/lib/onwork-deploy` 쓰기 권한을 줍니다. Docker 그룹 권한은 서버 관리자 수준이므로 전용 계정의 키를 보호합니다. `/etc/onwork/runtime.env`는 이 계정이 읽을 수 있게 하고 접근을 제한합니다. SSH는 현재 워크플로 기준 22번 포트를 사용합니다.
+3. 영구 DB 디렉터리와 별도 백업 디렉터리를 만들고 UID/GID 1000 소유, 디렉터리 권한 700으로 설정합니다. DB 파일은 600을 사용합니다. 기존 직원 DB를 지우거나 빈 DB로 대신하지 않습니다.
+4. `deploy/runtime.env.example`을 서버의 `/etc/onwork/runtime.env`로 복사하고 빈 값을 실제 정보로 채웁니다. 이 파일은 Git에 올리지 않습니다.
+
+| 항목 | 입력할 내용 |
+| --- | --- |
+| `APP_ORIGIN` | 나중에 연결할 실제 HTTPS 고정 주소. 경로와 끝 슬래시 제외 |
+| `SITE_ID` | 기존 사업장 구분값을 유지 |
+| `DATA_DIR` | 기존 DB를 둘 서버의 절대 디렉터리 경로 |
+| `BACKUP_DIR` | 백업 전용 절대 디렉터리 경로. DATA_DIR와 별도 사용 |
+| `DB_FILENAME` | DATA_DIR 안에 있는 기존 DB 파일명. 디렉터리·슬래시 제외 |
+
+`ONWORK_IMAGE`는 배포 스크립트가 검증된 커밋의 이미지로 지정합니다. 서비스에는 비밀번호를 환경변수로 등록하지 않습니다. 관리자·직원 비밀번호 해시는 기존 DB에 유지됩니다.
+
+### 2. 기존 DB를 서버로 이전하기
+
+1. 기존 앱에서 입력을 중단하고 앱을 종료하거나 점검 모드로 전환합니다. 이전 작업 동안 이전 앱과 새 앱 양쪽에서 입력을 받지 않습니다.
+2. 기존 환경에서 **SQLite 온라인 백업**으로 한 번도 사용하지 않은 새 파일을 만듭니다. 실행 중인 `.sqlite` 파일 하나만 일반 복사하면 WAL에 남은 최신 기록이 누락될 수 있습니다.
+3. 백업을 암호화된 전송 경로로 서버의 비공개 위치에 전송하고, 새 이름의 파일에 복구합니다. `RESTORE_PATH`는 기존 DB 경로와 같으면 안 됩니다. 원본·백업을 그대로 보관합니다.
+4. 복구 검증 후 `DB_FILENAME`을 복구 파일명으로 지정합니다. 계정·출퇴근·생산량·신청·승인 이력은 유지하고, 복구본의 세션·일시 토큰은 지우므로 다시 로그인해야 합니다.
+5. 새 서버에서 실제 계정·집계를 확인하기 전까지 원본을 폐기하지 않습니다. 새 입력이 시작된 뒤 옛 DB로 단순 전환하면 새 기록이 누락되므로 중단하고 데이터를 대조해야 합니다.
+
+백업·복구 CLI의 입력은 아래와 같습니다. 실제 경로를 변수에 설정한 뒤 사용합니다. `.env`를 앱이 자동으로 읽지는 않습니다.
+
+```bash
+# 기존 환경: DATABASE_PATH는 현재 DB, BACKUP_PATH는 사용하지 않은 새 파일
+npm run backup
+# 별도 대상에만 복구. source는 BACKUP_PATH, 새 파일은 RESTORE_PATH
+CONFIRM_RESTORE=YES npm run restore
+```
+
+두 명령 모두 경로 변수를 먼저 설정해야 합니다. 백업은 WAL/SHM·심볼릭 링크를 포함해 기존 대상을 거부하고 파일을 독점 생성합니다. 실패한 백업 파일은 성공한 백업으로 사용하지 않습니다. 복구는 무결성·외래키 및 업무 테이블 건수를 검사하며 기존 파일을 덮어쓰지 않습니다. 기존 신청 이력 트리거는 유지됩니다.
+
+### 3. Cloudflare에서 고정 주소 연결
+
+1. 사용자가 보유하거나 선택한 도메인을 Cloudflare에 연결합니다. 도메인 구매와 유료 서버 생성은 별도로 결정합니다.
+2. 서버 호스트에 `cloudflared`를 설치하고 **지속적으로 사용하는 named Tunnel**을 생성해 서비스로 등록합니다. 토큰은 서버에서만 보관하고 Git·채팅·로그에 넣지 않습니다.
+3. Tunnel의 Published application route에서 정한 호스트 이름을 **`http://127.0.0.1:3000`**에 연결합니다. 이는 호스트에 설치한 cloudflared 기준입니다. cloudflared까지 컨테이너로 옮기면 네트워크 구성을 다시 정해야 합니다.
+4. 같은 HTTPS 주소를 `APP_ORIGIN`에 설정합니다. 외부에서 3000번 포트를 열지 않습니다. Compose는 호스트의 loopback에만 바인딩합니다. 로그인/API 응답을 강제로 캐시하는 Cache Everything 규칙도 만들지 않습니다.
+5. 실제 HTTPS에서 로그인·로그아웃·권한 분리·신청/승인·재시작 후 데이터 유지·서버 재부팅 후 Docker와 Tunnel 자동 시작을 확인합니다. 임시 Quick Tunnel 주소는 시범 운영 고정 주소로 사용하지 않습니다.
+
+[Cloudflare Tunnel 공식 안내](https://developers.cloudflare.com/tunnel/get-started/)
+
+### 4. 검증된 커밋만 자동 배포
+
+`.github/workflows/ci.yml`은 다음 순서로 실행합니다.
+
+`main push → npm ci → 구문·전체 테스트 → Docker 이미지 내부 전체 테스트 → 임시 DB Docker 통합 검사 → 동일 이미지 artifact → 서버 배포`
+
+- `deploy`는 `needs: verify`로 검사 성공에 종속됩니다. PR에서는 배포하지 않습니다. 최신 main보다 오래된 실행은 배포 직전 건너뜁니다.
+- 이미지는 커밋 SHA 태그를 붙여 전달하고 서버에서 소스를 다시 빌드하거나 `git pull`하지 않습니다. artifact 체크섬도 확인합니다.
+- 배포는 GitHub와 서버의 잠금으로 직렬 처리합니다. 새 이미지를 받는 동안 기존 앱은 동작하며, 기존 앱 중지 → 별도 새 백업 → 새 앱 시작 → healthcheck 순서에서 짧은 중단이 있습니다.
+- 실패하면 같은 DB를 유지한 채 이전 이미지를 재시작합니다. 첫 배포 실패 또는 이전 이미지도 실패하면 앱을 중지하고 실패를 보고합니다. DB를 과거 백업으로 자동 되돌리지 않습니다.
+- 정상 완료한 이미지와 Compose 파일은 `/var/lib/onwork-deploy/current`, 이전 것은 `previous` 링크로 남습니다. 이전 이미지·DB·백업은 자동 삭제하지 않습니다. 디스크 여유 공간을 모니터링하고 오래된 이미지·전송 artifact 정리는 담당자가 보존 기간을 정한 뒤 수행합니다.
+- 향후 스키마 변경은 반드시 **직전 코드와 호환되는 추가 방식**으로 작성해야 자동 코드 롤백이 안전합니다. 삭제·변환 등 비호환 마이그레이션은 이 자동 배포에 넣지 말고 별도 중단·이전 계획을 세웁니다.
+
+서버·이전 DB·도메인 준비가 완료되면 GitHub 저장소 Settings에서 다음을 설정합니다.
+
+1. **Environments → production**을 만들고 배포 브랜치를 main으로 제한합니다. 필요한 경우 담당자 승인을 추가할 수 있습니다.
+2. production의 **Secrets**에 `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`를 등록합니다. SSH 개인키를 README나 채팅에 붙이지 않습니다. `KNOWN_HOSTS`는 신뢰할 수 있는 서버 콘솔에서 대조한 호스트 키를 사용합니다. 호스트 키 검증을 끄지 않습니다.
+3. **Actions → Variables의 저장소 변수** `DEPLOY_ENABLED`를 `true`로 설정합니다. 이 값은 서버 준비 전에는 설정하지 않습니다.
+4. main에 PR과 `Tests and deployment image` 검사를 요구하는 branch ruleset을 설정합니다. 필수 검사를 생략하거나 실패를 무시하지 않습니다.
+5. 준비 완료 후 CI를 수동 실행하거나 검증할 변경을 main에 push합니다. CI 로그의 검사 성공과 deploy 성공을 각각 확인합니다. 서버 설정이 없는 현재 상태에서는 deploy가 skipped인 것이 정상입니다.
+
+[GitHub Secrets 안내](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets), [Docker Compose 저장소·서비스 설정](https://docs.docker.com/reference/compose-file/services/)
+
+### 5. 정기 백업과 장애 대응
+
+`deploy/backup.sh`를 서버의 접근 제한된 운영 스크립트 위치에 설치하고 해당 배포 계정의 cron 또는 systemd timer로 매일 실행합니다. 스크립트는 배포와 같은 잠금을 사용하며, 실행 중인 DB를 온라인 백업하고 검증합니다. 실패 알림, 보관 기간과 담당자를 설정해야 합니다. 같은 서버의 백업만으로는 서버 장애에 대비할 수 없으므로 암호화한 외부 저장소에도 복사하고 별도 환경에서 복구를 연습합니다. 외부 저장소와 스케줄은 아직 설정하지 않았습니다.
+
+자동 배포가 실패하면 먼저 GitHub Actions에서 실패를 확인합니다. 코드 롤백이 성공했다면 기존 DB로 서비스가 재개됩니다. 수동으로 직전 이미지를 실행할 때는 서버에서 다음을 사용합니다. 이 명령은 DB 복구가 아닙니다.
+
+```bash
+# 서버에서만 실행. 백업·배포와 동시에 실행하지 않도록 잠급니다.
+exec 9>/var/lib/onwork-deploy/deploy.lock
+flock -n 9
+release=$(readlink -f /var/lib/onwork-deploy/previous)
+export ONWORK_IMAGE=$(cat "$release/image.txt")
+docker compose -p onwork --env-file /etc/onwork/runtime.env \
+  -f "$release/compose.yaml" up -d --wait --wait-timeout 90
+```
+
+성공 후 운영 담당자가 current/previous를 실제 실행한 릴리스와 맞춰야 합니다. 실패한 이미지로 자동 재배포되지 않도록 `DEPLOY_ENABLED`도 먼저 끕니다. `flock`이 실패하면 후속 명령을 실행하지 않습니다.
+
+DB 자체를 복구해야 한다면 앱을 중지하고 현재 DB부터 별도 백업합니다. 검증된 과거 백업을 **새 파일**에 복원하고 누락되는 입력 기간을 확인한 뒤 `DB_FILENAME`을 전환합니다. 원본 위에 복사하거나 `docker compose down -v`, 볼륨 삭제, DB 초기화로 장애를 해결하지 않습니다. 코드 롤백이 성공했다는 이유만으로 DB도 과거로 돌아간 것은 아닙니다.
+
+### 검증 명령과 범위
+
+```bash
+npm run verify
+docker build --tag onwork-check .
+node scripts/docker-smoke.mjs onwork-check
+```
+
+Docker 통합 검사는 임시 직원·계정·출퇴근·생산·승인 이력을 생성하고 실행·재시작·온라인 백업·별도 파일 복구·덮어쓰기 거부·배포 실패 후 이전 이미지 재가동을 검사합니다. 임시 `.test` 주소는 테스트 전용이며 운영 주소를 지정하는 것이 아닙니다. 실제 DB·운영 서버·도메인에는 접속하지 않습니다. 실제 Cloudflare HTTPS와 브라우저 검증은 서버·도메인 연결 후 수행해야 합니다.

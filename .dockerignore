@@ -1,0 +1,19 @@
+# Only application sources and tests can enter the build context.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!server.mjs
+!storage.mjs
+!lib/
+!lib/*.mjs
+!public/
+!public/*.js
+!public/*.html
+!public/*.css
+!scripts/
+!scripts/*.mjs
+!scripts/*.sh
+!tests/
+!tests/*.mjs

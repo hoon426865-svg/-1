@@ -1,0 +1,84 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Tests and deployment image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run verify
+      - run: bash -n deploy/release.sh deploy/backup.sh
+      - run: docker build --tag "onwork:$GITHUB_SHA" .
+      - run: node scripts/docker-smoke.mjs "onwork:$GITHUB_SHA"
+      - name: Package the verified image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          mkdir bundle
+          docker save --output bundle/image.tar "onwork:$GITHUB_SHA"
+          cp deploy/compose.yaml deploy/release.sh bundle/
+          printf '%s\n' "$GITHUB_SHA" > bundle/commit.txt
+          cd bundle
+          sha256sum image.tar compose.yaml release.sh commit.txt > checksums.txt
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: verified-release
+          path: bundle/
+          retention-days: 7
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: onwork-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-release
+          path: bundle
+      - name: Deploy the same verified commit over SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Avoid deploying an older queued run over a newer main commit.
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$latest" != "$GITHUB_SHA" ]; then
+            echo 'A newer main commit exists; skipping this release.'
+            exit 0
+          fi
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          test -n "$SSH_KEY"
+          test -n "$KNOWN_HOSTS"
+          umask 077
+          mkdir -p "$RUNNER_TEMP/onwork-ssh"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/onwork-ssh/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/onwork-ssh/known_hosts"
+          trap 'rm -f "$RUNNER_TEMP/onwork-ssh/key"' EXIT
+          opts=(-i "$RUNNER_TEMP/onwork-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/onwork-ssh/known_hosts" -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20)
+          destination="$DEPLOY_USER@$DEPLOY_HOST"
+          remote="/var/lib/onwork-deploy/incoming/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          ssh "${opts[@]}" "$destination" "umask 077; mkdir -p '$remote'"
+          scp "${opts[@]}" bundle/* "$destination:$remote/"
+          ssh "${opts[@]}" "$destination" "bash '$remote/release.sh' '$remote'"

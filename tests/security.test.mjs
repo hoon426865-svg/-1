@@ -14,7 +14,7 @@ test('Codespaces HTTPS 출처 자동 설정, 수동 주소 우선 및 운영 설
   assert.throws(() => config({ APP_ORIGIN: 'https://example.com/path' }));
   assert.throws(() => config({ APP_ORIGIN: 'ftp://example.com' }));
   assert.throws(() => config({ ...codespace, NODE_ENV: 'production', SITE_ID: 'site' }));
-  assert.equal(config({ NODE_ENV: 'production', SITE_ID: 'site', APP_ORIGIN: 'https://example.com' }).secure, true);
+  assert.equal(config({ NODE_ENV: 'production', SITE_ID: 'site', APP_ORIGIN: 'https://example.com', DATABASE_PATH:'/data/onwork.sqlite', STORAGE_ROOT:'/data' }).secure, true);
 });
 
 test('정확한 미리보기 출처만 허용하고 localhost·다른 Codespace·위조 전달 헤더를 거부한다', async () => {
