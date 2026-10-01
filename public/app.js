@@ -1,9 +1,12 @@
 import { totals, needsReview } from './domain.js';
 import { mountWorkRequests } from './work-requests.js';
+import { collectPages } from './worker-pages.js';
+import { renderPasskeyLogin } from './passkeys.js';
 
 const screen = document.querySelector('#screen');
 const account = document.querySelector('#account');
 let me = null, state = null, selectedDate = '', epoch = 0;
+let authMode = 'password';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const time = value => value ? esc(value.slice(0, 5)) : '—';
 const notice = message => { document.querySelector('#notice').textContent = message; };
@@ -17,7 +20,7 @@ function clearSession(message = '') {
   renderLogin();
   notice(message);
 }
-async function api(path, body) {
+async function api(path, body, singlePage = false) {
   const response = await fetch(path, {
     method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'same-origin',
     headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': me?.csrf || '', 'X-Onwork-Origin': location.origin },
@@ -36,7 +39,7 @@ async function api(path, body) {
     error.status = response.status;
     throw error;
   }
-  return data;
+  return body === undefined && !singlePage ? collectPages(path, data, page => api(page, undefined, true)) : data;
 }
 function bindForm(selector, action) {
   const form = screen.querySelector(selector);
@@ -52,6 +55,7 @@ function bindForm(selector, action) {
   });
 }
 function renderLogin() {
+  if(authMode==='passkey'){renderPasskeyLogin(screen,bindForm,api,load);return;}
   screen.innerHTML = `<section class="card auth-card"><h1>로그인</h1><p class="muted">발급받은 계정으로 로그인하세요. 직원은 사번을 사용합니다.</p>
     <form id="login-form"><label>계정<input name="login" autocomplete="username" maxlength="30" required></label>
     <label>비밀번호<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
@@ -107,6 +111,7 @@ function renderPassword() {
 async function load() {
   const requestEpoch = ++epoch;
   const setup = await api('/api/setup');
+  authMode = setup.authMode || 'password';
   if (requestEpoch !== epoch) return;
   if (location.origin !== setup.appOrigin) {
     me = null; state = null;

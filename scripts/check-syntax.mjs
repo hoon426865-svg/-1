@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 const files = ['server.mjs','storage.mjs'];
-for (const directory of ['lib','public','scripts','tests']) {
+for (const directory of ['lib','public','scripts','tests','worker','tests/worker']) {
   for (const name of readdirSync(directory)) if (/\.(mjs|js)$/.test(name)) files.push(`${directory}/${name}`);
 }
 for (const file of files) {
