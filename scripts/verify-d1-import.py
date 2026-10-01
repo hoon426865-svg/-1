@@ -19,13 +19,18 @@ def verify(expected_path, export_path, output):
             for table in module.VOLATILE:
                 if db.execute('SELECT count(*) FROM "'+table+'"').fetchone()[0]:
                     raise ValueError('Ephemeral credentials must not be migrated: '+table)
+            # Fresh legacy migration must not contain unexpected passkeys or
+            # live enrollment/admin authorizations before service is enabled.
+            for table in ['passkeys','passkey_challenges','passkey_used_tickets','passkey_invites','passkey_admin_challenges','passkey_account_state']:
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone() and db.execute('SELECT count(*) FROM "'+table+'"').fetchone()[0]:
+                    raise ValueError('Fresh migration contains unexpected authentication state: '+table)
             marker=db.execute('SELECT source_digest FROM worker_import WHERE id=1').fetchone()
             if not marker or marker[0]!=expected['source_sha256']:
                 raise ValueError('Source snapshot marker mismatch')
             if db.execute('SELECT count(*) FROM worker_guard').fetchone()[0]:
                 raise ValueError('Transaction guard is not empty')
             required=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'revision_%'")]
-            if len(required) not in (48,54):
+            if len(required) not in (48,54,61):
                 raise ValueError('Expected revision triggers missing')
     os.umask(0o077)
     with open(output,'x') as f:

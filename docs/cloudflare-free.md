@@ -82,9 +82,44 @@ python3 scripts/passkey-enrollment.py --source "$SOURCE_DB" --login "$LOGIN" \
 
 비밀번호를 정확히 검증해야 15분짜리 계정·기존 해시·정확한 HTTPS 주소에 결합된 등록권을 새 파일로 생성합니다. 틀린 비밀번호는 발급하지 않습니다. 파일 내용을 해당 사용자의 로그인 화면 **기존 계정 패스키 등록**에 붙여 넣고 브라우저의 지문·얼굴·기기 PIN 또는 보안키 확인을 완료합니다. 등록권은 URL·로그·localStorage에 넣지 않으며 한 번만 사용할 수 있습니다. UV를 지원하지 않는 인증기는 허용하지 않습니다. 등록 후 기존 세션은 폐기하며 패스키로 다시 로그인합니다. 기기 PIN은 서버에 보내지 않습니다.
 
-RP ID를 정확한 Worker 호스트로 묶으므로 preview 패스키를 production에 사용할 수 없습니다. 운영 주소를 변경하면 다시 등록해야 합니다. 등록권 발급을 기존 비밀번호 입력 없이 사용자에게 맡기지 않습니다. 패스키 분실 시에도 동일한 검증 후 재등록이 필요합니다. 비밀번호까지 분실한 사용자의 본인 확인·계정 복구와 Workers의 신규 직원 발급 UI는 아직 구현하지 않았습니다. 현재 Workers에서는 직원 정보 수정·비활성화·재활성화는 유지하지만 신규 직원 생성·비밀번호 변경·비밀번호 재설정은 409로 차단합니다. 보존된 Node 앱의 해당 기능은 유지되지만, 운영 전환 전 별도 안전한 계정 발급/복구 절차를 구현하고 검증해야 합니다.
+RP ID를 정확한 Worker 호스트로 묶으므로 preview 패스키를 production에 사용할 수 없습니다. 운영 주소를 변경하면 다시 등록해야 합니다. 등록권 발급을 기존 비밀번호 입력 없이 사용자에게 맡기지 않습니다. 패스키가 있는 사용자는 추가 기기에 기존 비밀번호 검증 후 등록권으로 패스키를 등록할 수 있습니다.
+
+### 신규 직원 계정 발급과 분실 복구
+
+관리자는 패스키로 로그인한 후 **직원 관리 → 직원 추가**에서 이름·사번·팀·발급 사유를 입력합니다. **직원 추가**를 누르면 관리자 패스키의 생체인증/PIN 확인을 다시 요구합니다. 이 인증은 90초 동안 해당 작업 내용에만 유효하며 한 번만 사용할 수 있습니다. 새 계정은 `employee` 권한으로만 생성되며 등록 전 업무 접근은 막습니다. 새 계정에는 비밀번호를 생성하거나 scrypt 강도를 낮추지 않으며 `passkey-only:` 표시는 비밀번호 로그인에 사용할 수 없습니다.
+
+발급 후 표시되는 등록권을 **직원 본인을 확인한 다음 안전한 경로로** 전달합니다. 등록권은 서버에 SHA-256만 저장하고 15분 후 만료되며 한 번만 사용합니다. 등록권 창을 닫으면 다시 표시하지 않습니다. 직원은 로그인 화면의 등록 메뉴에서 자신의 기기에 패스키를 등록하고 로그인합니다. 등록권을 잃거나 만료시키면 아래 복구 절차로 새 등록권을 발급합니다.
+
+**분실 복구:** 관리자 → 직원 관리 → 해당 직원의 **본인을 직접 확인했습니다** 체크 → 복구 사유 입력 → **분실 패스키 복구** → 관리자 패스키 재인증 → 새 등록권 전달 순서입니다. 사번만 알고 있다고 복구해 주지 않으며, 관리자는 직접 대면 등 기존 인사 확인 절차로 본인을 확인해야 합니다. 체크박스가 자동 본인 인증을 대신하지 않습니다.
+
+복구는 기존 직원 ID·권한·비밀번호 해시·업무 기록을 유지하며 기존 패스키, 모든 세션, 미사용 등록 요청·등록권을 원자적으로 폐기합니다. 복구 이전에 발급된 오프라인 등록권도 더 이상 사용할 수 없습니다. 복구 후 등록을 마칠 때까지 업무 접근을 막으며, 직원은 새 패스키를 등록하고 다시 로그인합니다. 퇴사 계정·다른 직원·직원 권한의 발급/복구는 거부합니다. 관리자와 사유를 감사 이력에 남기되 등록권은 로그·이력·URL·localStorage에 남기지 않습니다.
+
+관리자가 자신의 패스키를 모두 잃은 경우에는 앞의 오프라인 발급 절차로 **기존 관리자 비밀번호를 동일한 scrypt 강도로 검증**한 후 재등록합니다. 관리자 비밀번호와 발급 개인키까지 모두 분실한 상황을 자동으로 우회하는 복구 기능은 제공하지 않습니다. 발급 개인키와 추가 관리자 패스키는 따로 안전하게 보관하세요. Node 앱의 기존 비밀번호 변경/재설정 흐름은 유지하며, Workers는 패스키 등록과 복구를 사용합니다.
 
 ### 실제 무료 계정에서의 통과 조건
+
+원격 검증용 도구는 원본 SQLite를 열지 않고 별도의 가상 계정만 생성합니다. 먼저 Cloudflare 로그인과 Free 요금제 확인을 끝내고 새 preview D1 ID·정확한 preview 주소를 `wrangler.jsonc`에 설정합니다. production 리소스를 먼저 만들 필요는 없습니다.
+
+```bash
+# 사용하지 않은 private/ 하위 디렉터리와 정확한 preview 주소
+node scripts/preview-fixture.mjs private/preview-run-UNUSED "$PREVIEW_ORIGIN"
+```
+
+생성된 `issuer.public.json`의 공개키만 preview `ENROLLMENT_PUBLIC_KEY`에 넣고, preview `SITE_ID`는 `site-1`로 설정합니다. 개인키와 `source.sqlite`는 Git에서 제외됩니다. **새 preview DB에만** 스키마와 가상 데이터 번들을 적용한 뒤 preview Worker를 배포합니다.
+
+```bash
+node scripts/cloudflare-config.mjs preview
+npx wrangler d1 migrations apply onwork-preview --env preview --remote
+npx wrangler d1 execute onwork-preview --env preview --remote --file private/preview-run-UNUSED/import/import.sql
+npm run worker:assets
+npx wrangler deploy --env preview
+node scripts/preview-check.mjs private/preview-run-UNUSED
+node scripts/preview-cpu.mjs private/preview-run-UNUSED
+```
+
+HTTPS 검사는 실제 preview에 WebAuthn ES256 서명을 보내 로그인·출퇴근·생산량·신청 승인·월간/연간 조회·새 직원 발급·복구·권한 차단·로그아웃을 확인합니다. 10회 반복 로그인·업무 요청을 포함합니다. 브라우저의 물리 기기 검증을 대신하지 않으므로 실제 브라우저에서도 패스키 등록과 관리자 재인증을 확인해야 합니다. 다시 검사할 때 기존 가상 DB/보고서를 덮어쓰지 않고 새 가상 DB·새 경로를 사용합니다.
+
+CPU 도구는 실제 Cloudflare invocation 로그를 HTTPS 응답의 CF Ray ID와 맞춰 요청별 CPU를 검사합니다. 모든 요청의 계측이 있고 CPU가 10ms 이하이며 outcome이 정상이고 기능 검사와 10회 로그인이 완료되어야 통과합니다. 원격 계측은 아직 실행되지 않아 API 응답 형식·권한은 연결 후 확인해야 합니다. 지연으로 로그가 누락되면 통과하지 않습니다. Workers Logs는 preview에만 100% 수집 설정을 사용합니다. API는 Wrangler 로그인 토큰을 출력 없이 읽거나 `CLOUDFLARE_API_TOKEN`을 사용합니다. 구독 조회가 거부되면 계정에 한정된 **Billing Read**를 포함하는 읽기 권한이 필요하며 Billing Write는 사용하지 않습니다. 원시 로그·헤더·쿠키는 보고서에 저장하지 않습니다. [공식 CPU 필드](https://developers.cloudflare.com/workers/observability/query-builder/), [관측 API](https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/).
 
 가상 관리자·직원을 패스키 등록하고 로그인 → 출근·퇴근 → 생산량 → 신청·승인·반려·재검토 → 월간·연간 조회 → 로그아웃·재로그인을 브라우저에서 확인합니다. 잘못된 서명·UV 누락·다른 Origin·등록권 재사용도 거부되어야 합니다.
 
@@ -139,8 +174,8 @@ DB 초기 이전과 schema migration은 자동 코드 배포와 분리되어 있
 
 ## 현재 완료 상태
 
-완료: Workers Fetch와 Assets 코드, UV 필수 패스키 등록·로그인, 기존 scrypt 해시 보존과 로컬 비밀번호 검증 이전 도구, 권한·CSRF 검사, D1 원자적 업무 저장, 페이지 조회, SQLite 이전·검증 도구, 별도 테스트 DB 구성, 기본 비활성 GitHub 자동 배포 설정.
+완료: Workers Fetch와 Assets 코드, UV 필수 패스키 등록·로그인, 관리자 재인증에 결합된 신규 직원 발급·분실 복구, 기존 scrypt 해시 보존과 로컬 비밀번호 검증 이전 도구, 권한·CSRF 검사, D1 원자적 업무 저장, 페이지 조회, SQLite 이전·검증 도구, 별도 테스트 DB 구성, 기본 비활성 GitHub 자동 배포 설정.
 
-미확인: 실제 Free CPU·무료 할당량·HTTPS 브라우저/기기 동작, 원격 D1 이전·실제 운영 배포, 변경 코드의 GitHub CI.
+미확인: 실제 Free CPU·무료 할당량·HTTPS 브라우저/기기 동작, 원격 D1 이전·실제 운영 배포, 추가 변경 코드의 GitHub CI 결과.
 
-막힘: 기기 인증 코드 만료로 Cloudflare CLI 미연결, 실제 계정 ID·D1 ID·workers.dev 주소 미확정. 신규 직원 발급과 비밀번호 분실 계정 복구는 추가 구현·검증 전까지 Workers에서 차단되어 운영 전환 조건을 충족하지 못합니다.
+막힘: 기기 인증 코드 만료로 Cloudflare CLI 미연결, 실제 계정 ID·D1 ID·workers.dev 주소 미확정. 신규 직원 발급과 분실 복구의 실제 무료 preview CPU·브라우저 확인도 대기 중입니다.

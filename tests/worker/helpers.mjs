@@ -16,7 +16,7 @@ export async function fixture({production=false,empty=false,passkey=false,public
   }}}));
   const db=await mf.getD1Database('DB');
   try {
-  for(const name of ['0001_existing_schema.sql','0002_workers.sql','0003_passkeys.sql'])await applySql(db,'migrations/'+name);
+  for(const name of ['0001_existing_schema.sql','0002_workers.sql','0003_passkeys.sql','0004_passkey_administration.sql'])await applySql(db,'migrations/'+name);
   if(!empty){
     await db.batch([
       db.prepare("INSERT INTO users(id,login,password_hash,role,must_change) VALUES('admin','ADMIN',?,'admin',0)").bind(hash),

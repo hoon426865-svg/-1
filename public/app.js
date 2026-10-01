@@ -1,7 +1,7 @@
 import { totals, needsReview } from './domain.js';
 import { mountWorkRequests } from './work-requests.js';
 import { collectPages } from './worker-pages.js';
-import { renderPasskeyLogin } from './passkeys.js';
+import { renderPasskeyLogin, authorizePasskeyOperation, showEnrollmentInvite } from './passkeys.js';
 
 const screen = document.querySelector('#screen');
 const account = document.querySelector('#account');
@@ -198,13 +198,18 @@ function renderAdmin() {
       const record = records.find(item => item.employeeId === person.id), total = totals(state.production, selectedDate, person.id);
       return `<tr><td>${esc(person.name)}<span class="team">${esc(person.number)} · ${esc(person.team)}${person.active ? '' : ' · 퇴사'}</span></td><td>${time(record?.in)}</td><td>${record?.outDate && record.outDate !== record.date ? esc(record.outDate) : ''} ${time(record?.out)}</td><td>${total.good}</td><td>${total.bad}</td></tr>`;
     }).join('')}</tbody></table></div></section>
-    <section class="card"><h2>직원 관리</h2><p>사번이 로그인 계정이 됩니다. 임시 비밀번호는 첫 로그인 후 변경해야 합니다.</p>
-    <form id="add-employee-form" class="employee-form">${employeeFields()}<label>임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="primary">직원 추가</button><p role="alert" class="task-error"></p></form>
-    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form><form class="employee-form reset-password-form" data-id="${esc(person.id)}"><label>${esc(person.number)} 새 임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>임시 비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="secondary">비밀번호 재설정</button><p class="small">이 직원의 모든 로그인 세션이 종료되며, 다음 로그인 시 비밀번호를 변경해야 합니다.</p><p role="alert" class="task-error"></p></form>`).join('')}</div></section>
+    <section class="card"><h2>직원 관리</h2><p>${authMode === 'passkey' ? '직원에게 일회용 등록권을 전달하면 본인의 기기에 패스키를 등록할 수 있습니다. 계정 발급과 복구에는 관리자 패스키 재인증이 필요합니다.' : '사번이 로그인 계정이 됩니다. 임시 비밀번호는 첫 로그인 후 변경해야 합니다.'}</p>
+    <form id="add-employee-form" class="employee-form">${employeeFields()}${authMode === 'passkey' ? '' : '<label>임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>'}${reasonField()}<button class="primary">직원 추가</button><p role="alert" class="task-error"></p></form>
+    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form><form class="employee-form reset-password-form" data-id="${esc(person.id)}">${authMode === 'passkey' ? `<label><input name="identityConfirmed" type="checkbox" required> ${esc(person.number)} 직원의 본인을 직접 확인했습니다.</label>${reasonField()}<button class="secondary">분실 패스키 복구</button><p class="small">기존 패스키와 모든 세션을 폐기하고 일회용 등록권을 발급합니다.</p>` : `<label>${esc(person.number)} 새 임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>임시 비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="secondary">비밀번호 재설정</button><p class="small">이 직원의 모든 로그인 세션이 종료되며, 다음 로그인 시 비밀번호를 변경해야 합니다.</p>`}<p role="alert" class="task-error"></p></form>`).join('')}</div></section>
     <section class="card"><h2>작업 종류 관리</h2><form id="add-task-form" class="task-form"><label>새 작업 이름<input name="name" maxlength="40" required></label>${reasonField()}<button class="primary">작업 추가</button><p role="alert" class="task-error"></p></form>
     ${state.tasks.map(task => `<form class="task-form edit-task-form" data-id="${esc(task.id)}"><label>작업 이름<input name="name" value="${esc(task.name)}" maxlength="40" required></label>${reasonField()}<button class="secondary">이름 수정</button><p role="alert" class="task-error"></p></form>`).join('')}</section>`;
   document.querySelector('#admin-date').onchange = event => { if (event.target.value) { selectedDate = event.target.value; render(); } };
-  bindForm('#add-employee-form', body => save('/api/admin/employee', body, '직원 계정을 추가했습니다.'));
+  bindForm('#add-employee-form', async body => {
+    if (authMode !== 'passkey') return save('/api/admin/employee', body, '직원 계정을 추가했습니다.');
+    const authorization = await authorizePasskeyOperation(api, 'create', body);
+    const result = await api('/api/admin/employee', { ...body, authorization });
+    await load(); showEnrollmentInvite(result);
+  });
   document.querySelectorAll('.edit-employee-form').forEach((form, i) => {
     const person = state.employees[i];
     bindForm(`.edit-employee-form[data-id="${person.id}"]`, body => save('/api/admin/employee', { ...body, id: person.id, version: person.version }, '직원 정보를 수정했습니다.'));
@@ -217,6 +222,12 @@ function renderAdmin() {
     };
   });
   state.employees.forEach(person => bindForm(`.reset-password-form[data-id="${person.id}"]`, async (body, form) => {
+    if (authMode === 'passkey') {
+      const details = { id: person.id, version: person.version, reason: body.reason, identityConfirmed: body.identityConfirmed === 'on' };
+      const authorization = await authorizePasskeyOperation(api, 'recover', details);
+      const result = await api('/api/admin/passkeys/recover', { ...details, authorization });
+      form.reset(); await load(); showEnrollmentInvite(result); return;
+    }
     if (body.password !== body.confirmation) throw Error('임시 비밀번호 확인이 일치하지 않습니다.');
     await api('/api/admin/reset-password', { id: person.id, password: body.password, reason: body.reason });
     form.reset();

@@ -2,7 +2,7 @@ import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthentic
 import {check,one,all,begin,audit} from './d1.mjs';
 import {digest,token} from './security.mjs';
 const enc=new TextEncoder();
-function sameContext(response){
+export function sameContext(response){
   let data;try{data=JSON.parse(new TextDecoder().decode(from64(response?.response?.clientDataJSON||'')));}catch{check(false,401,'인증 응답 형식이 다릅니다.');}
   check((data.crossOrigin===false||data.crossOrigin===undefined)&&data.topOrigin===undefined,401,'다른 사이트 문맥에서 인증할 수 없습니다.');
 }
@@ -10,6 +10,13 @@ export const from64=value=>Uint8Array.from(atob(value.replaceAll('-','+').replac
 export const to64=bytes=>btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
 export async function enrollmentTicket(value,env,db,now){
   check(typeof value==='string'&&value.length<4096,400,'등록권을 입력하세요.');
+  if(/^[A-Za-z0-9_-]{43}$/.test(value)){
+    const hash=await digest(value),invite=await one(db,'SELECT * FROM passkey_invites WHERE hash=?',hash);
+    check(invite&&!invite.used_at&&invite.expires>now.getTime(),401,'등록권이 만료되었거나 이미 사용되었습니다.');
+    const account=await one(db,'SELECT u.*,e.active FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id=?',invite.user_id);
+    check(account&&account.role==='employee'&&account.active===1&&invite.password_digest===await digest(account.password_hash),401,'계정 상태가 변경되었습니다.');
+    return {account,hash,invite:true};
+  }
   const parts=value.split('.');check(parts.length===3,401,'등록권이 올바르지 않습니다.');
   let claims,header,key;
   try{
@@ -22,6 +29,8 @@ export async function enrollmentTicket(value,env,db,now){
   check(claims.aud===env.APP_ORIGIN&&claims.purpose==='enroll'&&Number.isInteger(claims.iat)&&Number.isInteger(claims.exp)&&claims.iat<=seconds&&claims.exp>seconds&&claims.exp-claims.iat<=900&&typeof claims.nonce==='string'&&claims.nonce.length>=32,401,'등록권이 만료되었거나 대상 주소가 다릅니다.');
   const account=await one(db,'SELECT u.*,e.active FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id=?',claims.sub);
   check(account&&(account.role==='admin'||account.active===1)&&claims.passwordDigest===await digest(account.password_hash),401,'계정 상태가 변경되었습니다.');
+  const state=await one(db,'SELECT last_recovery FROM passkey_account_state WHERE user_id=?',account.id);
+  check(!state||claims.iat*1000>=state.last_recovery,401,'복구 이전 등록권은 사용할 수 없습니다.');
   const hash=await digest(value);check(!await one(db,'SELECT 1 FROM passkey_used_tickets WHERE hash=?',hash),409,'이미 사용된 등록권입니다.');
   return {account,hash};
 }
@@ -56,6 +65,7 @@ export async function passkeyRoute(path,body,request,env,db,now){
     const credential=verified.registrationInfo.credential;
     tx.add('INSERT INTO passkeys VALUES(?,?,?,?,?,?)',credential.id,ticket.account.id,new Uint8Array(credential.publicKey).buffer,credential.counter,JSON.stringify(credential.transports||[]),stamp);
     tx.add('INSERT INTO passkey_used_tickets VALUES(?,?,?)',ticket.hash,ticket.account.id,stamp);
+    if(ticket.invite)tx.add('UPDATE passkey_invites SET used_at=? WHERE hash=? AND used_at IS NULL',stamp,ticket.hash);
     // UV enrollment replaces the temporary-password requirement, without
     // modifying the preserved hash. All old sessions are revoked.
     tx.add('UPDATE users SET must_change=0 WHERE id=?',ticket.account.id);tx.add('DELETE FROM sessions WHERE user_id=?',ticket.account.id);

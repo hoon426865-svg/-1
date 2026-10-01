@@ -3,6 +3,7 @@ import {check,one,all,begin,consistent,audit,boundedDatabase} from './d1.mjs';
 import {koreaNow,needsReview,validateQuantity} from '../public/domain.js';
 import {saveRequest,decideRequest,listRequests,requestHistory,reportPeriod} from './work-requests.mjs';
 import {passkeyRoute} from './passkeys.mjs';
+import {adminOptions,provision} from './passkey-admin.mjs';
 
 const uuid=()=>crypto.randomUUID();
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8',...headers}});
@@ -133,6 +134,12 @@ export async function handle(request,env,clock=()=>new Date()){
       return finish({ok:true},200,{'Set-Cookie':cookie('',0)});
     }
     check(!user.must_change,403,'먼저 임시 비밀번호를 변경하세요.');
+    if(path==='/api/admin/passkeys/authorize/options'&&method==='POST'){
+      check(passkeyMode,404,'패스키 인증이 필요합니다.');return finish(await adminOptions(body,user,env,db,tx,now));
+    }
+    if(path==='/api/admin/passkeys/recover'&&method==='POST'){
+      check(passkeyMode,404,'패스키 인증이 필요합니다.');return finish(await provision('recover',body,user,env,db,tx,now));
+    }
     if(path==='/api/state'&&method==='GET')return read({...await dataPages(db,user,url.searchParams),today:koreaNow(now).date,siteId:config.siteId,revision:tx.revision});
     if(path==='/api/work-requests'&&method==='GET')return read({...await listRequests(db,user,url.searchParams),pageType:'list',revision:tx.revision});
     if(path==='/api/work-requests/history'&&method==='GET')return read({...await requestHistory(db,user,url.searchParams),pageType:'list',revision:tx.revision});
@@ -144,7 +151,7 @@ export async function handle(request,env,clock=()=>new Date()){
       return read({pageType:'list',items:items.slice(0,200),next:items.length>200?items[199].id:null,revision:tx.revision});
     }
     if(path==='/api/admin/employee'&&method==='POST'){
-      check(!passkeyMode||body.id,409,'새 계정은 보존된 DB의 별도 계정 발급 절차 후 패스키를 등록하세요.');
+      if(passkeyMode&&!body.id)return finish(await provision('create',body,user,env,db,tx,now));
       const reason=text(body.reason,500),name=text(body.name),team=text(body.team),login=loginNumber(body.number),before=body.id?await row(db,'employees',body.id):null;
       if(before)version(before,body);
       check(!await one(db,'SELECT id FROM employees WHERE number=? AND id!=?',login,body.id||''),409,'이미 등록된 사번입니다.');
