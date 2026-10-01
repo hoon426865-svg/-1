@@ -9,9 +9,11 @@ permissions:
   contents: read
 jobs:
   verify:
-    name: Tests and deployment image
+    name: Tests and Workers bundle
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,65 +22,58 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
-      - run: bash -n deploy/release.sh deploy/backup.sh
-      - run: docker build --tag "onwork:$GITHUB_SHA" .
-      - run: node scripts/docker-smoke.mjs "onwork:$GITHUB_SHA"
-      - name: Package the verified image
+      - name: Package the tested Worker and static assets
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
-          mkdir bundle
-          docker save --output bundle/image.tar "onwork:$GITHUB_SHA"
-          cp deploy/compose.yaml deploy/release.sh bundle/
-          printf '%s\n' "$GITHUB_SHA" > bundle/commit.txt
-          cd bundle
-          sha256sum image.tar compose.yaml release.sh commit.txt > checksums.txt
+          printf '%s\n' "$GITHUB_SHA" > dist/worker/commit.txt
+          sha256sum dist/worker/index.js > dist/worker/bundle.sha256
       - uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
-          name: verified-release
-          path: bundle/
+          name: verified-worker
+          path: |
+            dist/worker/index.js
+            dist/worker/commit.txt
+            dist/worker/bundle.sha256
+            worker-assets/
           retention-days: 7
   deploy:
     needs: verify
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLOUDFLARE_DEPLOY_ENABLED == 'true' && vars.FREE_RUNTIME_VERIFIED == 'true' && vars.D1_MIGRATION_VERIFIED == 'true' && vars.FREE_PLAN_CONFIRMED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     environment: production
     concurrency:
-      group: onwork-production
+      group: onwork-workers-production
       cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      FREE_AUTH_CODE_SHA256: ${{ vars.FREE_AUTH_CODE_SHA256 }}
+      WRANGLER_SEND_METRICS: 'false'
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
       - uses: actions/download-artifact@v4
         with:
-          name: verified-release
-          path: bundle
-      - name: Deploy the same verified commit over SSH
+          name: verified-worker
+          path: .
+      - name: Require the latest tested commit and verified bundle
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Avoid deploying an older queued run over a newer main commit.
-          latest=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
-          if [ "$latest" != "$GITHUB_SHA" ]; then
-            echo 'A newer main commit exists; skipping this release.'
-            exit 0
-          fi
-          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
-          [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]
-          test -n "$SSH_KEY"
-          test -n "$KNOWN_HOSTS"
-          umask 077
-          mkdir -p "$RUNNER_TEMP/onwork-ssh"
-          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/onwork-ssh/key"
-          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/onwork-ssh/known_hosts"
-          trap 'rm -f "$RUNNER_TEMP/onwork-ssh/key"' EXIT
-          opts=(-i "$RUNNER_TEMP/onwork-ssh/key" -o "UserKnownHostsFile=$RUNNER_TEMP/onwork-ssh/known_hosts" -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=20)
-          destination="$DEPLOY_USER@$DEPLOY_HOST"
-          remote="/var/lib/onwork-deploy/incoming/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          ssh "${opts[@]}" "$destination" "umask 077; mkdir -p '$remote'"
-          scp "${opts[@]}" bundle/* "$destination:$remote/"
-          ssh "${opts[@]}" "$destination" "bash '$remote/release.sh' '$remote'"
+          test "$(cat dist/worker/commit.txt)" = "$GITHUB_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)" = "$GITHUB_SHA"
+          sha256sum --check dist/worker/bundle.sha256
+      - name: Check account, environment isolation and Free authentication attestation
+        run: |
+          node scripts/cloudflare-config.mjs production
+          node scripts/cloudflare-free-plan.mjs
+      # DB migrations/import/restore are separate cutover steps.
+      # Code deployment never initializes, reseeds or replaces the production DB.
+      - run: npx wrangler deploy dist/worker/index.js --no-bundle --env production

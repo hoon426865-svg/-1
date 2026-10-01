@@ -63,3 +63,12 @@ backups/
 # Local agent configuration
 .agents/
 .codex/
+
+# Workers local runtime and private D1 migration exports
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+worker-assets/
+!migrations/*.sql
+__pycache__/
+*.pyc

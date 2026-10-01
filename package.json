@@ -5,9 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
+    "dev:node": "node server.mjs",
     "start": "node server.mjs",
     "test": "node --test --test-isolation=none --test-reporter=spec tests/*.test.mjs",
-    "verify": "node scripts/check-syntax.mjs && npm test",
+    "verify": "node scripts/check-syntax.mjs && npm test && npm run test:worker",
+    "verify:node": "node scripts/check-syntax.mjs && npm test",
+    "test:worker": "npm run worker:build && node --test --test-isolation=none --test-reporter=spec tests/worker/*.test.mjs",
+    "worker:assets": "node scripts/worker-assets.mjs",
+    "worker:build": "npm run worker:assets && wrangler deploy --env='' --dry-run --outdir dist/worker",
+    "worker:dev": "npm run worker:assets && wrangler dev --env=''",
+    "worker:benchmark": "node scripts/worker-crypto-benchmark.mjs",
+    "worker:passkey-benchmark": "npm run worker:build && node scripts/worker-passkey-benchmark.mjs",
     "backup": "node scripts/backup.mjs",
     "restore": "node scripts/restore.mjs"
   },
@@ -15,7 +23,13 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^14.0.0",
+    "@simplewebauthn/server": "^14.0.3",
     "@zxing/browser": "^0.2.1",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "miniflare": "5.20260930.0-alpha",
+    "wrangler": "4.145.0"
   }
 }
