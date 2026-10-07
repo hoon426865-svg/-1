@@ -1,77 +1,59 @@
-# 무료 Workers 시범 운영 작업 인계
+# 작업 인계 — 2026-10-07 UTC
 
-2026년 10월 1일 UTC 기준입니다. 코드 구현과 자동 테스트는 완료했으며, Cloudflare 계정 연결과 실제 무료 preview 검증은 미완료입니다. main 병합과 운영 배포, 유료 전환 및 결제는 하지 않았습니다. 내일은 2026년 10월 2일 기준으로 아래 순서에서 재개합니다.
+오늘 작업을 종료합니다. 사용자가 실제 Windows PIN으로 패스키 로그인 후 관리자 화면 진입을 확인했습니다. 무료 테스트 환경만 배포했고 main 병합, 유료 전환, 운영 데이터 변경은 하지 않았습니다. 내일은 2026-10-08에 아래 절차로 재개합니다.
 
-## Git 상태
+## 브랜치와 최신 커밋
 
-- 현재 작업 브랜치: `feat/workers-passkey-free-preview`
-- 인계 작성 기준 마지막 코드 커밋: `21ba08ed39683e5ce056f4928a610ec762a639ef`
-- 커밋 제목: `feat: complete passkey employee provisioning and lost-key recovery`
-- 해당 코드 커밋은 origin의 동일 브랜치에 푸시되어 있습니다.
-- 검토용 [초안 PR #1](https://github.com/hoon426865-svg/-1/pull/1)은 열려 있으며 main에 병합하지 않았습니다.
-- 인계 작성 전 작업 트리는 깨끗했습니다. 남은 코드 변경은 없으며 이번 저장 대상은 이 인계 문서입니다.
-- 이 문서를 저장한 최종 커밋과 원격 동기화 여부는 아래 명령으로 확인합니다. 문서 작성 기준 코드 커밋과 인계 문서 커밋은 다릅니다.
+- 현재 브랜치: `feat/workers-passkey-free-preview`
+- 오늘 최종 코드 커밋: `6a5a24258836d0cb80d8eccba9e996b0d22ba47d` — `fix: preserve passkey identity and complete free preview login`
+- 저장소: https://github.com/hoon426865-svg/-1
+- 이 인계 문서는 위 코드 커밋 다음에 별도 커밋합니다. 문서 자체의 커밋 ID는 자기 참조할 수 없으므로 최신 인계 커밋과 원격 일치는 아래 명령으로 확인합니다. 두 커밋은 같은 브랜치에 함께 push합니다.
 
 ```bash
-git branch --show-current
-git log -1 --oneline
-git status --short
-git rev-list --count '@{upstream}..HEAD'
+cd /workspaces/-1
+git status --short --branch
+git log -2 --oneline
+git rev-parse HEAD origin/feat/workers-passkey-free-preview
 ```
 
-## 완료한 기능
+## 오늘 완료한 작업
 
-- Workers Fetch API와 정적 Assets를 사용하도록 기존 Node 앱의 주요 기능을 D1에 연결했습니다. 기존 Node 앱과 SQLite는 보존했습니다.
-- 직원/관리자 권한, Origin 및 CSRF 검사, 출퇴근, 생산량, 근무 변경 신청·승인·반려·재검토·불변 이력, 월간·연간 조회를 구현했습니다. D1 변경은 revision 검사와 원자적 batch를 사용합니다. 페이지 조회와 요청당 SQL 제한을 적용했습니다.
-- 로그인은 ES256 패스키와 사용자 확인(UV) 필수 검증을 사용합니다. 기존 계정 ID·권한·scrypt 해시를 보존하며, 최초 이전 때만 신뢰하는 로컬 환경에서 기존 비밀번호를 같은 scrypt 강도로 검증해 일회용 등록권을 발급합니다.
-- 신규 직원 발급과 분실 패스키 복구는 관리자 패스키 재인증을 요구합니다. 재인증은 작업 내용에 결합되고 90초 동안 한 번만 유효합니다. 등록권은 15분 동안 한 번만 유효하며 서버에는 해시만 보관합니다.
-- 분실 복구는 직원 본인 확인과 사유 입력 후 수행하며 기존 패스키·세션·등록권을 원자적으로 폐기합니다. 기존 직원 ID·비밀번호 해시·업무 기록은 보존합니다. 관리자가 패스키를 전부 분실하면 기존 관리자 비밀번호를 로컬 검증해 재등록합니다.
-- SQLite 읽기 전용 스냅샷, 전체 데이터 내용 비교, D1 이전 검증 도구를 준비했습니다. 신선한 이전 DB에 예기치 않은 인증 자료가 있으면 검증을 거부합니다.
-- 테스트/운영 DB 분리, 가상 preview DB 생성, 실제 HTTPS 업무 검사, CF Ray ID에 대응하는 Cloudflare 요청별 CPU 수집 도구를 준비했습니다. 원격 API 형식과 권한은 실제 연결 후 확인해야 합니다.
-- GitHub CI 성공 후 자동 배포할 설정을 마련했습니다. 실제 무료 CPU, 무료 구독, DB 이전, 인증 코드 해시 검증이 모두 충족되어야 운영 배포를 허용합니다. 지금은 운영 배포를 활성화하지 않았습니다.
+- Cloudflare 연결 및 Billing Read 토큰 유효성과 구독 조회 권한을 확인했습니다. 확인 시 유료 Workers/D1 구독이 없었으며 결제·유료 전환은 하지 않았습니다. 입력 스크립트는 일반 터미널의 숨김 입력만 허용하고 토큰을 `private/`의 600 파일로 저장합니다.
+- 기존 SQLite와 분리한 가상 계정 테스트 D1에 배포했습니다. 테스트 주소: https://onwork-preview-20261007-01.hoon426865.workers.dev
+- 테스트 Worker/D1 이름: `onwork-preview-20261007-01`; D1 ID: `6cf3c747-3708-4f6a-8961-ab4ad9c41686`.
+- 최신 Worker 버전: `7172d631-8576-49c4-896b-b88b792062e0`. production 설정은 점검 모드이며 운영 배포·자동 배포는 활성화하지 않았습니다.
+- PIN 이후 화면 정지에 대해 요청 시간 제한, 실패 단계 안내, 세션·상태 조회와 화면 전환을 수정했습니다. 등록 후 다시 로그인할 수 있도록 성공 안내와 계정 입력을 정리했습니다.
+- 등록·로그인의 credential ID를 동일한 바이트 기준 base64url로 정규화하고 id/rawId 일치를 검사합니다. 로그인 계정별 allowCredentials와 challenge 계정 결합으로 다른 resident credential 선택을 방지했습니다. 서명·UV·Origin·RP·카운터 검증은 유지합니다.
+- 요청 확인 번호, 단계·오류 코드와 credential ID 해시·일치 여부만 기록하는 제한된 진단을 추가했습니다. 토큰·등록권·원시 ID·개인정보·쿠키 값·본문은 기록하지 않습니다. 이전 사용자 확인 번호의 과거 로그는 관측 권한 부족으로 확보하지 못했으므로 실제 이전 요청 ID 비교를 완료했다고 주장하지 않습니다.
+- 기존 등록 패스키를 임의 삭제하지 않았습니다. 기존 키를 사용한 최신 배포 Chromium 로그인·세션·새로고침 검사와 사용자의 실제 Windows PIN 관리자 로그인이 성공했습니다.
 
-## 테스트 결과
+## 검증 결과와 제한
 
-- `npm run verify`: Node 회귀 검사 54개, workerd/D1 검사 17개 모두 통과했습니다.
-- Workers dry-run 빌드와 59개 JavaScript 파일의 구문 검사를 통과했습니다.
-- 검사에는 패스키 서명·UV·Origin·계정 연결·재사용·만료·퇴사·횟수 제한, 관리자 재인증·직원 발급·분실 복구·부분 변경 방지, CSRF·권한, 업무/집계, SQLite 원본 및 WAL 보존을 포함합니다.
-- 가상 preview fixture 생성 도구를 별도의 비공개 경로에서 확인했습니다. 원본 DB를 이용하지 않았습니다.
-- [마지막 코드 커밋의 GitHub CI](https://github.com/hoon426865-svg/-1/actions/runs/36844227168): `Tests and Workers bundle` 성공, `deploy` 건너뜀.
-- 종전 로컬 프로세스 CPU는 로그인 검증 10회 평균 약 9ms, 최대 20ms였습니다. 이 값은 로컬 D1 작업을 포함한 10ms 단위 측정이며 마지막 추가 기능의 실제 Cloudflare CPU 결과가 아닙니다. 무료 운영 통과로 해석하지 않습니다.
-- 이번 인계 작업은 코드 변경이 없어 전체 기능 검사를 반복하지 않았습니다. 실제 DB 백업 검증과 문서·Git 제외 대상 검사를 수행했습니다.
+- 전체 로컬 검증: Node 54개 + Workers 19개 = 73개 성공. 최종 진단 해시 최적화 후 관련 회귀 검사와 Workers 번들 빌드도 성공했습니다.
+- 실제 HTTPS 기능 검사: 129개 요청, 14회 패스키 로그인; 출퇴근·생산·신청 승인·월간/연간 보고·직원 발급·복구·권한·로그아웃 확인. 이 초기 보고서는 최신 인증 코드의 CPU 판정에 재사용할 수 없습니다.
+- 실제 Chromium 회귀 검사 9개 성공. 물리 인증기는 사용자가 Windows PIN으로 관리자 화면 진입을 확인했습니다.
+- 오늘 push의 GitHub CI 결과는 재개 시 확인합니다. 로컬 통과와 GitHub 저장 성공은 CI 성공을 의미하지 않습니다.
 
-## DB 백업과 보존
+## 안전 백업
 
-- 원본: `data/onwork.sqlite`. 원본과 기존 WAL/SHM 및 이전 백업은 보존합니다.
-- 이번 백업: `backups/onwork-handoff-20261001T094451Z.sqlite`
-- 기존 `npm run backup`과 `scripts/backup.mjs` / `lib/backup.mjs`를 사용했습니다. 새 경로를 독점 생성하는 기능을 사용했으며, 하위 프로세스 권한 오류 후 이미 생성된 백업을 검증해 재사용했습니다. 덮어쓰기나 중복 생성을 하지 않았습니다.
-- 검증: SQLite `integrity_check=ok`, 외래키 위반 없음, 스키마 버전 1, 원본과 모든 테이블 스키마·내용 일치. 커밋된 WAL 기록도 포함합니다. 원본 DB/WAL은 검증 중 변경되지 않았습니다.
-- 백업 파일 크기: 176128바이트. 파일 권한: `0600`.
-- 백업 SHA-256: `a8cce971b17afbc0f093de10129ed8580d593b0ae54c60c07186fe810e5f30ba`
-- 원본 DB, 백업, 가상 테스트 DB, 키와 등록권은 Git에서 제외합니다. 이번 백업은 이 작업 공간에만 저장했으며 GitHub나 외부 저장소에 업로드하지 않았습니다.
-- 자동 복구를 실행하지 않습니다. 복구가 필요하면 기존 복구 기능의 새 대상 경로 규칙을 따르고 현재 DB를 덮어쓰지 않습니다.
+백업 디렉터리: `/workspaces/-1/backups/handoff-20261007T092442Z` (700). 모든 백업과 manifest 파일은 600이며 Git 제외를 확인했습니다. 이전 백업도 보존했습니다. 이 백업은 현재 작업공간의 로컬 파일이므로 작업공간 삭제에 대비한 별도 보관은 아직 하지 않았습니다.
 
-## 미완료와 미확인
+| 대상 | 파일 | SHA-256 |
+|---|---|---|
+| 기존 SQLite | `onwork-original.sqlite` | `26f603ae2440d8d2a2de249283ba2d4a672a311cae84ce85b2e7a6650ec8c6e1` |
+| 테스트 D1 원격 export | `onwork-preview.sql` | `dfd70a1771bfc0cedfd0a8e8ff66ef2cfabbf82ab5ba38b9c4412c11140df87a` |
+| D1 export의 별도 로컬 복원 | `onwork-preview-offline.sqlite` | `30ef796fa867987b63e1f7790238157cc418ddf5333e5fddff31e9df3e54b69f` |
 
-- Cloudflare CLI 인증이 마지막 확인에서 미완료였습니다. 기기 인증 요청이 승인 없이 만료된 적이 있으므로 재개할 때 연결 상태를 다시 확인하고 필요하면 새 인증을 시작합니다.
-- 실제 계정 ID, 새 preview D1 ID, 정확한 workers.dev 주소와 preview 공개키 설정을 확정해야 합니다. production 설정은 여전히 미확정이며 점검 모드를 유지합니다.
-- 실제 Free 계정의 preview 배포·HTTPS 로그인·주요 업무·신규 직원 발급·분실 복구·요청별 CPU는 아직 검증하지 못했습니다.
-- 실제 브라우저/기기의 패스키 등록, 로그인, 관리자 재인증도 미확인입니다. 소프트웨어 인증기로 수행하는 HTTPS 검사는 물리 기기 확인을 대신하지 않습니다.
-- 실제 D1 이전·이전 후 원격 export 비교·운영 배포는 하지 않았습니다.
-- 관리자 패스키·기존 비밀번호·오프라인 발급 개인키를 모두 분실한 상황을 자동으로 우회하는 기능은 제공하지 않습니다.
+- 원본: `/workspaces/-1/data/onwork.sqlite`. 읽기 전용 온라인 백업으로 WAL의 커밋을 포함했으며 전체 스키마·모든 테이블 내용이 일치합니다. 백업 전후 원본 DB/WAL 해시도 동일합니다.
+- 테스트 D1은 원격 export만 실행했습니다. export 중 D1 조회가 일시 제한될 수 있으며 운영 DB에는 접근하지 않았습니다. export를 새 로컬 DB에만 복원해 `integrity_check=ok`와 외래키 위반 없음 확인. 등록 패스키 6개와 업무·인증 기록을 포함합니다.
+- 상세 manifest: `/workspaces/-1/backups/handoff-20261007T092442Z/manifest.json`. SHA-256, 경로, 검증 결과와 D1 테이블 개수를 보관합니다. SQL에는 인증 자료가 포함되므로 채팅·Git·공개 저장소에 복사하지 않습니다.
+- 복원 명령은 실행하지 않습니다. 원본 또는 테스트 D1을 덮어쓰지 않습니다. 토큰·등록권·발급키·DB·보고서는 `private/`, `data/`, `backups/`에서 Git 제외됩니다.
 
-## 내일 재개 순서
+## 미완료 CPU 검증과 내일 할 일
 
-1. 현재 브랜치와 원격 커밋, 작업 트리를 확인합니다. 새 변경이 있다면 보존하고 먼저 검토합니다. 위 백업의 존재와 무결성을 확인하며 이미 완료된 백업을 이유 없이 다시 생성하지 않습니다.
-2. `npx wrangler whoami`로 연결을 확인합니다. 미인증이면 아래 명령을 실행하고 출력된 기기 인증 링크에서 코드를 입력해 5분 안에 승인합니다. 로그인 정보는 문서·Git·채팅에 복사하지 않습니다.
-
-   ```bash
-   npx wrangler login --device --browser=false --scopes account:read user:read workers:write workers_scripts:write workers_tail:read d1:write
-   ```
-
-3. Cloudflare에서 Workers Free와 D1 Free 상태를 확인합니다. 필요한 조회 권한이 없으면 해당 계정에 한정된 읽기 권한으로 확인합니다. 유료 전환이나 결제는 진행하지 않습니다.
-4. **새 테스트용 preview D1만** 준비하고 정확한 preview workers.dev 주소를 설정합니다. 기존 DB를 삭제하거나 production 리소스를 변경하지 않습니다. `wrangler.jsonc`의 preview를 채우고 production과 격리됐는지 검사합니다.
-5. [무료 운영 절차](cloudflare-free.md)의 원격 검증 절차를 따릅니다. `scripts/preview-fixture.mjs`로 사용하지 않은 `private/` 경로에 가상 계정만 만들고 공개키만 preview에 설정합니다. 가상 DB의 스키마와 import 번들만 새 preview D1에 적용합니다. 원본 직원 자료는 preview에 보내지 않습니다.
-6. preview만 배포합니다. `scripts/preview-check.mjs`로 실제 HTTPS 로그인과 출퇴근·생산량·신청 승인·월간/연간 조회·계정 발급·복구를 확인합니다. 실제 브라우저의 패스키 흐름도 별도로 확인합니다.
-7. `scripts/preview-cpu.mjs`와 Cloudflare 계측으로 요청별 CPU를 확인합니다. 모든 요청의 실제 계측, 기능 검사 성공, 반복 로그인, 요청당 10ms 이하와 정상 invocation을 요구합니다. 로그 누락·권한 부족·CPU 초과는 미확인 또는 실패로 기록하고 보안 강도를 낮추지 않습니다.
-8. 결과만 비밀정보 없이 문서에 갱신하고 현재 작업 브랜치에 저장합니다. **main 병합과 운영 배포는 별도 사용자 지시 전까지 하지 않습니다.** production 이전과 자동 배포 변수 활성화도 아직 진행하지 않습니다.
+1. 현재 브랜치와 원격 HEAD, GitHub CI, 위 백업 파일·해시를 확인합니다. 기존 작업 트리 변경과 백업을 보존합니다. 테스트 주소에서 ADMIN 계정으로 기존 패스키를 사용합니다. 이미 성공한 Windows 키를 재등록하거나 삭제하지 않습니다.
+2. Wrangler 연결이 만료됐을 때만 재인증합니다. 토큰 값은 출력하지 않습니다. Billing Read 권한과 무료 구독은 다시 읽기 전용으로 확인합니다.
+3. 전체 과거 invocation 조회는 현재 403입니다. 계정에 한정한 **Workers Observability Write/Edit** 토큰이 필요합니다. 조회 API가 POST이므로 Read만으로 부족하며 Billing Write·유료 전환은 필요하지 않습니다. 일반 터미널에서 `python3 scripts/save-cloudflare-billing-token.py --purpose observability`로 숨겨 저장합니다. `private/cloudflare-observability-token.txt`가 이미 있으면 덮어쓰지 않습니다.
+4. 최신 인증 코드 해시와 새 보고서 경로로 HTTPS 기능 검사를 수행하고 CF Ray ID별 invocation CPU를 수집합니다. `scripts/preview-cpu.mjs`의 실제 성공 응답 형식도 확인합니다. 기존 보고서를 덮어쓰거나 초기 코드 보고서를 최신 코드 검증으로 사용하지 않습니다.
+5. 로그인 최소 10회와 등록·직원 발급·복구·조회·업무 요청의 모든 표본에 대해 CPU 10ms 이하, 정상 outcome, 누락 없음, 기능 성공을 요구합니다. 일부 실시간 표본(로그인 7ms, 등록 10ms, me 2ms, state 6ms)은 전체 무료 통과 근거가 아닙니다. 최신 코드의 전체 CPU 검증은 **미완료**입니다.
+6. 안전한 결과만 문서에 갱신합니다. CPU 미통과·누락 시 원인을 수정하고 재검증하며 보안 강도를 낮추지 않습니다. 별도 사용자 지시 없이 main 병합·운영 이전·운영 배포·자동 배포 변수 활성화·요금제 변경은 하지 않습니다.
