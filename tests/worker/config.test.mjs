@@ -1,7 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
 import {validateConfig,authenticationHash} from '../../scripts/cloudflare-config.mjs';
 import {assertFreeSubscriptions,verifyFreeAccount} from '../../scripts/cloudflare-free-plan.mjs';
 import {boundedDatabase} from '../../worker/d1.mjs';
@@ -11,7 +9,8 @@ test('배포 설정은 별도 DB·HTTPS workers.dev·현재 인증 코드 무료
   assert.equal(validateConfig(c,'preview'),true);assert.equal(validateConfig(c,'production',hash),true);
   assert.throws(()=>validateConfig(c,'production',''));assert.throws(()=>validateConfig(c,'unknown',hash));
   c.env.production.d1_databases=c.env.preview.d1_databases;assert.throws(()=>validateConfig(c,'preview'));
-  assert.throws(()=>validateConfig(JSON.parse(readFileSync('wrangler.jsonc','utf8')),'preview'));
+  const incomplete=sample();incomplete.env.preview.d1_databases[0].database_id='REPLACE_PREVIEW_D1_ID';
+  assert.throws(()=>validateConfig(incomplete,'preview'));
 });
 test('무료 D1 요청 예산은 배치의 각 SQL을 합산하고 초과 요청을 실행 전에 차단한다',async()=>{
   let actual=0;const prepare=()=>({bind(){return this;},async first(){actual++;return {};}});

@@ -2,6 +2,7 @@ import { totals, needsReview } from './domain.js';
 import { mountWorkRequests } from './work-requests.js';
 import { collectPages } from './worker-pages.js';
 import { renderPasskeyLogin, authorizePasskeyOperation, showEnrollmentInvite } from './passkeys.js';
+import { reportAuthFailure } from './auth-diagnostics.js';
 
 const screen = document.querySelector('#screen');
 const account = document.querySelector('#account');
@@ -20,15 +21,28 @@ function clearSession(message = '') {
   renderLogin();
   notice(message);
 }
-async function api(path, body, singlePage = false) {
-  const response = await fetch(path, {
-    method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'same-origin',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': me?.csrf || '', 'X-Onwork-Origin': location.origin },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const data = await response.json();
+async function api(path, body, singlePage = false, options = {}) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+  let response, data;
+  try {
+    response = await fetch(path, {
+      method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'same-origin',
+      signal: controller.signal,
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': me?.csrf || '', 'X-Onwork-Origin': location.origin },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    try { data = await response.json(); }
+    catch (cause) {
+      if (controller.signal.aborted) throw cause;
+      throw Object.assign(Error('서버 응답을 읽지 못했습니다. 잠시 후 다시 시도해주세요.'), { code: 'INVALID_RESPONSE', status: response.status });
+    }
+    if (!data || typeof data !== 'object') throw Object.assign(Error('서버 응답 형식이 올바르지 않습니다. 잠시 후 다시 시도해주세요.'), { code: 'INVALID_RESPONSE', status: response.status });
+  } catch (failure) {
+    if (failure.code === 'INVALID_RESPONSE') { failure.requestId = response?.headers.get('X-Onwork-Request-ID'); throw failure; }
+    throw Object.assign(Error(controller.signal.aborted ? '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.' : '서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해주세요.'), { code: controller.signal.aborted ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR' });
+  } finally { clearTimeout(timer); }
   if (!response.ok) {
-    if (response.status === 401 && path !== '/api/login') clearSession('로그인이 필요합니다.');
+    if (response.status === 401 && path !== '/api/login' && !path.startsWith('/api/passkeys/') && !options.preserveLoginForm) clearSession('로그인이 필요합니다.');
     if (response.status === 403 && me && path !== '/api/password' && path !== '/api/logout') {
       // A password reset can invalidate permissions while this page is open.
       const current = await fetch('/api/me', { cache: 'no-store' });
@@ -37,6 +51,8 @@ async function api(path, body, singlePage = false) {
     }
     const error = Error(data.error || '요청에 실패했습니다.');
     error.status = response.status;
+    error.code = 'HTTP_ERROR';
+    error.requestId = response.headers.get('X-Onwork-Request-ID');
     throw error;
   }
   return body === undefined && !singlePage ? collectPages(path, data, page => api(page, undefined, true)) : data;
@@ -55,7 +71,10 @@ function bindForm(selector, action) {
   });
 }
 function renderLogin() {
-  if(authMode==='passkey'){renderPasskeyLogin(screen,bindForm,api,load);return;}
+  if(authMode==='passkey'){renderPasskeyLogin(screen,bindForm,api,load,login=>{
+    clearSession('패스키 등록이 완료되었습니다. 이제 패스키로 로그인 버튼을 눌러주세요.');
+    screen.querySelector('#passkey-login input[name="login"]').value=login||'';
+  });return;}
   screen.innerHTML = `<section class="card auth-card"><h1>로그인</h1><p class="muted">발급받은 계정으로 로그인하세요. 직원은 사번을 사용합니다.</p>
     <form id="login-form"><label>계정<input name="login" autocomplete="username" maxlength="30" required></label>
     <label>비밀번호<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
@@ -108,7 +127,7 @@ function renderPassword() {
     clearSession('비밀번호를 변경했습니다. 새 비밀번호로 로그인하세요.');
   });
 }
-async function load() {
+async function load({afterLogin=false} = {}) {
   const requestEpoch = ++epoch;
   const setup = await api('/api/setup');
   authMode = setup.authMode || 'password';
@@ -129,17 +148,31 @@ async function load() {
   }
   if (requestEpoch !== epoch) return;
   if (setup.required) { renderSetup(); return; }
-  const user = await api('/api/me');
+  let user;
+  try { user = await api('/api/me', undefined, false, { preserveLoginForm: afterLogin }); }
+  catch (error) {
+    error.stage = 'session-check';
+    if (afterLogin && error.status === 401) {
+      error.code = 'SESSION_NOT_STORED';
+      error.message = '기기 인증은 완료됐지만 로그인 세션을 확인하지 못했습니다. 앱 주소를 별도 탭에서 열고 사이트 쿠키가 허용되어 있는지 확인한 뒤 다시 로그인해주세요.';
+    }
+    throw error;
+  }
   if (requestEpoch !== epoch) return;
   me = user;
   renderAccount();
   if (me.mustChange) { renderPassword(); return; }
-  const snapshot = await api('/api/state');
+  let snapshot;
+  try { snapshot = await api('/api/state'); }
+  catch (error) { error.stage = 'state-load'; throw error; }
   if (requestEpoch !== epoch) return;
   state = snapshot;
   selectedDate ||= state.today;
   history.replaceState(null, '', me.role === 'admin' ? '/admin' : '/employee');
-  render();
+  try { render(); notice(''); }
+  catch {
+    throw Object.assign(Error('로그인은 완료됐지만 업무 화면을 표시하지 못했습니다. 상단 새로고침 버튼을 눌러주세요.'), { code: 'CLIENT_RUNTIME_ERROR', stage: 'screen-render' });
+  }
 }
 function render() {
   if (!me || !state) return;
@@ -242,6 +275,8 @@ function employeeFields(person = {}) {
 }
 function reasonField() { return '<label>변경 사유<input name="reason" maxlength="500" required></label>'; }
 window.addEventListener('pageshow', event => { if (event.persisted) { state = null; screen.replaceChildren(); load().catch(error => notice(error.message)); } });
+window.addEventListener('error', () => reportAuthFailure('client-runtime', {code:'CLIENT_RUNTIME_ERROR'}));
+window.addEventListener('unhandledrejection', () => reportAuthFailure('client-runtime', {code:'CLIENT_RUNTIME_ERROR'}));
 load().catch(error => {
   if (!me) renderLogin();
   notice(error.message);

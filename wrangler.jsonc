@@ -26,27 +26,28 @@
   ],
   "env": {
     "preview": {
-      "name": "onwork-preview",
+      "name": "onwork-preview-20261007-01",
       "workers_dev": true,
       "preview_urls": false,
       "vars": {
-        "APP_ORIGIN": "https://onwork-preview.REPLACE.workers.dev",
-        "SITE_ID": "preview-site",
+        "APP_ORIGIN": "https://onwork-preview-20261007-01.hoon426865.workers.dev",
+        "SITE_ID": "site-1",
         "ENVIRONMENT": "preview",
         "MAINTENANCE_MODE": "0",
         "AUTH_MODE": "passkey",
-        "ENROLLMENT_PUBLIC_KEY": "REPLACE_OFFLINE_ISSUER_PUBLIC_JWK"
+        "ENROLLMENT_PUBLIC_KEY": "{\"kty\":\"EC\",\"x\":\"ivZAM0_VwOSt_rjrRB3aNEJig7zX5O1VT_RCJpvxZj8\",\"y\":\"jvwNkkq5t2kCfgvF3xX6sHpTfSlKDfyDyBcgLU1IHxc\",\"crv\":\"P-256\"}"
       },
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "onwork-preview",
-          "database_id": "REPLACE_PREVIEW_D1_ID",
+          "database_name": "onwork-preview-20261007-01",
+          "database_id": "6cf3c747-3708-4f6a-8961-ab4ad9c41686",
           "migrations_dir": "migrations"
         }
       ],
       "observability": {
         "enabled": true,
+        "redact_query_string": true,
         "head_sampling_rate": 1
       }
     },
@@ -71,5 +72,6 @@
         }
       ]
     }
-  }
+  },
+  "account_id": "e4ff9b8a159d8def553c7eda4c09cdb3"
 }

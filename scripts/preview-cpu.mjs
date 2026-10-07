@@ -2,7 +2,7 @@ import {readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
-import {cloudflareToken} from './cloudflare-session.mjs';
+import {cloudflareObservabilityToken,cloudflareBillingToken} from './cloudflare-session.mjs';
 import {verifyFreeAccount} from './cloudflare-free-plan.mjs';
 import {validateConfig,authenticationHash} from './cloudflare-config.mjs';
 // Persist only bounded CPU/outcome metadata; discard raw URLs, headers,
@@ -28,10 +28,10 @@ export async function measure(directory){
   const run=JSON.parse(readFileSync(join(directory,'https-results.json'),'utf8'));
   if(!run.synthetic||run.origin!==config.env.preview.vars.APP_ORIGIN||run.worker!==config.env.preview.name||run.authHash!==authenticationHash())throw Error('Preview target or verified auth code changed');
   const output=join(directory,'cpu-results.json');if(existsSync(output))throw Error('CPU report exists; preserve it and use a new output directory for another run');
-  const token=cloudflareToken(),account=config.account_id||process.env.CLOUDFLARE_ACCOUNT_ID;
-  await verifyFreeAccount({CLOUDFLARE_ACCOUNT_ID:account,CLOUDFLARE_API_TOKEN:token});
-  const response=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/observability/telemetry/query`,{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({queryId:randomUUID(),timeframe:{from:run.from,to:run.to},view:'events',limit:1000,filters:[{key:'$metadata.service',operation:'eq',type:'string',value:run.worker}]})});
-  const data=await response.json();if(!response.ok||!data.success||!Array.isArray(data.result?.events?.events))throw Error('Actual CPU logs unavailable; check Workers observability/read permissions. Free verification remains incomplete.');
+  const token=cloudflareObservabilityToken(),account=config.account_id||process.env.CLOUDFLARE_ACCOUNT_ID;
+  await verifyFreeAccount({CLOUDFLARE_ACCOUNT_ID:account,CLOUDFLARE_API_TOKEN:cloudflareBillingToken()});
+  const response=await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/workers/observability/telemetry/query`,{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({queryId:randomUUID(),timeframe:{from:run.from,to:run.to},view:'events',limit:1000,dry:true,parameters:{filterCombination:'and',filters:[{key:'$metadata.service',operation:'eq',type:'string',value:run.worker}]}})});
+  const data=await response.json();if(!response.ok||!data.success||!Array.isArray(data.result?.events?.events))throw Error(`Actual CPU logs unavailable (HTTP ${response.status}); the query API requires Workers Observability Write permission. Free verification remains incomplete.`);
   const result=summarizeCpu(run,data.result.events.events);writeFileSync(output,JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
   console.log(JSON.stringify(result,null,2));
   if(!result.cloudflareFreeCpuVerified)throw Error('Missing CPU samples, CPU limit violation, invocation error or incomplete functional checks. Do not deploy production.');

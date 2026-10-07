@@ -47,7 +47,7 @@ async function dataPages(db,user,params,report=false){
   return result;
 }
 
-export async function handle(request,env,clock=()=>new Date()){
+export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   const config=settings(env,request),url=new URL(request.url),path=url.pathname,method=request.method,now=clock(),stamp=now.toISOString();
   // Primary session prevents stale reads during authorization and mutation checks.
   const db=boundedDatabase(env.DB.withSession('first-primary'));
@@ -62,9 +62,10 @@ export async function handle(request,env,clock=()=>new Date()){
   check(passkeyMode||env.ENVIRONMENT!=='production',503,'운영 환경은 패스키 인증이 필요합니다.');
   const passkeyPaths=['/api/passkeys/enroll/options','/api/passkeys/enroll/verify','/api/passkeys/login/options','/api/passkeys/login/verify'];
   const passkeyPost=passkeyPaths.includes(path)&&method==='POST';
-  const tx=passkeyPost?null:await begin(db),user=passkeyPost?null:await session(db,request,now);
+  const diagnosticPost=path==='/api/auth/diagnostics'&&method==='POST';
+  const tx=passkeyPost||diagnosticPost?null:await begin(db),user=passkeyPost||diagnosticPost?null:await session(db,request,now);
   if(url.searchParams.has('revision'))check(tx&&url.searchParams.get('revision')===String(tx.revision),409,'조회 중 변경이 있습니다. 다시 조회하세요.');
-  const publicApi=([...passkeyPaths,'/api/login','/api/origin-check'].includes(path)&&method==='POST')||(path==='/api/setup'&&['GET','POST'].includes(method));
+  const publicApi=([...passkeyPaths,'/api/login','/api/origin-check','/api/auth/diagnostics'].includes(path)&&method==='POST')||(path==='/api/setup'&&['GET','POST'].includes(method));
   const adminPath=path==='/admin'||path.startsWith('/admin/')||path==='/api/admin'||path.startsWith('/api/admin/');
   if(adminPath){check(user,401,'로그인이 필요합니다.');admin(user);}
   if(path.startsWith('/api/')&&!publicApi)check(user,401,'로그인이 필요합니다.');
@@ -80,13 +81,23 @@ export async function handle(request,env,clock=()=>new Date()){
     check(body&&typeof body==='object'&&!Array.isArray(body),400,'요청 형식을 확인하세요.');
     if(!publicApi)check(user&&request.headers.get('x-csrf-token')===user.csrf,403,'요청 검증이 필요합니다.');
   }
+  if(diagnosticPost){
+    const stages=['login-options','login-device','login-verify','session-check','state-load','screen-render','enroll-options','enroll-device','enroll-verify','client-runtime'];
+    const codes=['NETWORK_ERROR','REQUEST_TIMEOUT','INVALID_RESPONSE','HTTP_ERROR','SESSION_NOT_STORED','CLIENT_RUNTIME_ERROR','DEVICE_CANCELLED','DEVICE_ERROR','LIBRARY_LOAD_FAILED'];
+    check(Object.keys(body).every(key=>['stage','code','status','requestId'].includes(key))&&stages.includes(body.stage)&&codes.includes(body.code)&&Number.isInteger(body.status)&&(body.status===0||body.status>=100&&body.status<=599)&&(body.requestId===undefined||/^[a-f0-9-]{36}$/.test(body.requestId)),400,'오류 진단 형식이 올바르지 않습니다.');
+    const ms=now.getTime(),key=await digest('auth-diagnostic:'+(request.headers.get('cf-connecting-ip')||'local'));
+    const reserved=await one(db,'INSERT INTO login_limits VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN reset_at<=? THEN 1 ELSE attempts+1 END,reset_at=CASE WHEN reset_at<=? THEN ? ELSE reset_at END WHERE reset_at<=? OR attempts<20 RETURNING attempts',key,ms+900000,ms,ms,ms+900000,ms);
+    check(reserved,429,'오류 진단 요청이 너무 많습니다.');
+    console.warn(JSON.stringify({event:'auth-client-failure',stage:body.stage,code:body.code,status:body.status,...(body.requestId?{requestId:body.requestId}:{})}));
+    return json({ok:true});
+  }
   const finish=async(data,status=200,headers={})=>{await tx.commit();return json(data,status,headers);};
   const read=async data=>{await consistent(db,tx.revision);return json(data);};
   if(path==='/api/origin-check'&&method==='POST')return read({ok:true,receivedOrigin:config.origin});
   if(path==='/api/setup'&&method==='GET')return read({required:passkeyMode?false:await setupNeeded(db),appOrigin:config.origin,authMode:passkeyMode?'passkey':'password',environment:env.ENVIRONMENT});
   if(passkeyPaths.includes(path)&&method==='POST'){
     check(passkeyMode,404,'패스키 인증이 활성화되지 않았습니다.');
-    const result=await passkeyRoute(path,body,request,env,db,now);
+    const result=await passkeyRoute(path,body,request,env,db,now,diagnostics);
     const headers=result.sessionToken?{'Set-Cookie':cookie(result.sessionToken)}:{};
     delete result.sessionToken;return json(result,200,headers);
   }
@@ -221,7 +232,7 @@ export async function handle(request,env,clock=()=>new Date()){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
-  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/vendor/passkeys.js','/vendor/zxing.js'];
+  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/vendor/passkeys.js','/vendor/zxing.js'];
   check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);
@@ -229,8 +240,15 @@ export async function handle(request,env,clock=()=>new Date()){
   return new Response(asset.body,{status:asset.status,headers:asset.headers});
 }
 export default {async fetch(request,env){
-  let response;
-  try{response=await handle(request,env);}catch(error){if(!error.status)console.error('Worker request failed',error.name);response=json({error:error.status?error.message:'서버 오류가 발생했습니다.'},error.status||503,error.status===503?{'Retry-After':'60'}:{});}
+  let response,failed=false;
+  const requestId=crypto.randomUUID(),path=new URL(request.url).pathname;
+  const diagnosticPaths=['/api/passkeys/enroll/options','/api/passkeys/enroll/verify','/api/passkeys/login/options','/api/passkeys/login/verify','/api/me','/api/state','/api/auth/diagnostics'];
+  try{response=await handle(request,env,()=>new Date(),{requestId});}catch(error){failed=true;response=json({error:error.status?error.message:'서버 오류가 발생했습니다.'},error.status||503,error.status===503?{'Retry-After':'60'}:{});}
+  response.headers.set('X-Onwork-Request-ID',requestId);
+  if(diagnosticPaths.includes(path)||failed&&response.status>=500){
+    // Do not log headers, URL queries, account IDs, response bodies or exception text.
+    console.log(JSON.stringify({event:'auth-request',requestId,path:diagnosticPaths.includes(path)?path:'other',method:['GET','HEAD','POST'].includes(request.method)?request.method:'OTHER',status:response.status,sessionCookiePresent:/(?:^|;)\s*__Host-onwork=/.test(request.headers.get('cookie')||''),sessionCookieIssued:response.headers.has('Set-Cookie'),...(failed?{code:response.status>=500?'SERVER_ERROR':response.status===401?'AUTH_REJECTED':response.status===429?'RATE_LIMITED':'REQUEST_REJECTED'}:{})}));
+  }
   response.headers.set('Cache-Control','no-store');response.headers.set('X-Content-Type-Options','nosniff');response.headers.set('Referrer-Policy','same-origin');
   response.headers.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   response.headers.set('Strict-Transport-Security','max-age=31536000');return response;

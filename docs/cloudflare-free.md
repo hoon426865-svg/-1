@@ -4,7 +4,7 @@
 
 Workers의 정상 로그인은 **WebAuthn 패스키(ES256, 사용자 확인 UV 필수)**로 변경했습니다. 기존 비밀번호 검증은 Workers 요청에서 실행하지 않습니다. 계정 이전 때만 신뢰하는 로컬 환경에서 기존 scrypt 설정 N 16384, r 8, p 1, 64바이트로 검증하고, 오프라인 발급키로 서명한 일회용 등록권을 사용합니다. 원본 해시·계정 ID·권한·업무 기록은 그대로 보존합니다. 단순 클라이언트 해시나 약한 KDF로 대체하지 않습니다. 공개키만 Worker에 설정하고 발급용 개인키는 배포하지 않습니다.
 
-**실제 무료 preview CPU 검증은 아직 미완료입니다.** 로컬 workerd의 기존 scrypt 검증 평균은 약 42ms였습니다. 패스키 로그인 검증 경로는 쿼리 최적화 후 10회 평균 약 9ms, 최대 20ms였지만 이 값에는 로컬 D1 프로세스 작업이 포함되고 10ms 단위로 측정되어 Cloudflare 요청별 CPU와 같지 않습니다. 패스키 등록 옵션과 등록 검증 1회는 각각 30ms와 10ms로 측정되었습니다. 이 결과로 Free 통과를 선언하지 않습니다. Cloudflare 계정 연결이 완료되지 않아 원격 preview·실물 브라우저 패스키·CPU 제한을 아직 검증하지 못했습니다. 운영 배포와 자동 배포는 계속 차단합니다.
+**실제 무료 preview CPU 검증은 아직 미완료입니다.** 로컬 workerd의 기존 scrypt 검증 평균은 약 42ms였습니다. 패스키 로그인 검증 경로는 쿼리 최적화 후 10회 평균 약 9ms, 최대 20ms였지만 이 값에는 로컬 D1 프로세스 작업이 포함되고 10ms 단위로 측정되어 Cloudflare 요청별 CPU와 같지 않습니다. 패스키 등록 옵션과 등록 검증 1회는 각각 30ms와 10ms로 측정되었습니다. 이 결과로 Free 통과를 선언하지 않습니다. 2026-10-07 Cloudflare 연결과 별도 테스트 D1 배포, HTTPS 주요 기능 검사를 완료했습니다. 사용자가 실제 Windows PIN으로 관리자 화면 진입을 확인했습니다. 최신 코드의 전체 요청별 CPU 검증은 아직 미완료입니다. 운영 배포와 자동 배포는 계속 차단합니다.
 
 [SimpleWebAuthn 서버 검증 API](https://simplewebauthn.dev/docs/packages/server), [패스키 사용자 확인 설정](https://simplewebauthn.dev/docs/advanced/passkeys).
 ## 무료 제한과 검증 범위
@@ -34,7 +34,7 @@ D1 조회는 primary 세션을 사용합니다. 변경은 revision 검사·업�
 5. `wrangler.jsonc`의 preview·production Database ID와 APP_ORIGIN을 실제 값으로 바꿉니다. production SITE_ID는 기존 DB의 직원 site_id와 일치해야 합니다. 원본 값이 불명확하면 이전 도구 manifest에 기록된 값을 확인하고, 여러 사업장이 있으면 이전을 중단합니다.
 6. Codespaces에서는 `npx wrangler login --device --browser=false --scopes account:read user:read workers:write workers_scripts:write workers_tail:read d1:write`를 실행하고 표시된 링크를 엽니다. 기기 코드를 입력하고 5분 안에 승인합니다. 일반 환경에서는 `npx wrangler login`도 사용할 수 있습니다. Cloudflare에 로그인한 뒤 Wrangler 권한 화면에서 **Allow**를 누릅니다. Codespaces에서는 명령이 출력한 링크를 직접 브라우저에서 엽니다. 다른 Cloudflare 계정으로 연결하지 않도록 계정을 확인합니다. `npx wrangler whoami`로 연결 결과를 확인합니다.
 
-이 작업에서 확인한 현재 CLI 상태는 **미인증**입니다. 계정 연결·DB 생성·workers.dev 주소 확인은 아직 실행하지 않았습니다. 토큰과 비밀번호를 채팅이나 Git에 붙이지 않습니다.
+2026-10-07 CLI 연결과 Billing Read 구독 조회를 완료했으며 유료 Workers/D1 구독이 없음을 확인했습니다. 테스트 주소는 https://onwork-preview-20261007-01.hoon426865.workers.dev 입니다. 기존 운영 SQLite는 테스트 DB에 가져오지 않았습니다. 토큰과 비밀번호를 채팅이나 Git에 붙이지 않습니다.
 
 ## 로컬 테스트와 무료 preview 검증
 
@@ -119,7 +119,7 @@ node scripts/preview-cpu.mjs private/preview-run-UNUSED
 
 HTTPS 검사는 실제 preview에 WebAuthn ES256 서명을 보내 로그인·출퇴근·생산량·신청 승인·월간/연간 조회·새 직원 발급·복구·권한 차단·로그아웃을 확인합니다. 10회 반복 로그인·업무 요청을 포함합니다. 브라우저의 물리 기기 검증을 대신하지 않으므로 실제 브라우저에서도 패스키 등록과 관리자 재인증을 확인해야 합니다. 다시 검사할 때 기존 가상 DB/보고서를 덮어쓰지 않고 새 가상 DB·새 경로를 사용합니다.
 
-CPU 도구는 실제 Cloudflare invocation 로그를 HTTPS 응답의 CF Ray ID와 맞춰 요청별 CPU를 검사합니다. 모든 요청의 계측이 있고 CPU가 10ms 이하이며 outcome이 정상이고 기능 검사와 10회 로그인이 완료되어야 통과합니다. 원격 계측은 아직 실행되지 않아 API 응답 형식·권한은 연결 후 확인해야 합니다. 지연으로 로그가 누락되면 통과하지 않습니다. Workers Logs는 preview에만 100% 수집 설정을 사용합니다. API는 Wrangler 로그인 토큰을 출력 없이 읽거나 `CLOUDFLARE_API_TOKEN`을 사용합니다. 구독 조회가 거부되면 계정에 한정된 **Billing Read**를 포함하는 읽기 권한이 필요하며 Billing Write는 사용하지 않습니다. 원시 로그·헤더·쿠키는 보고서에 저장하지 않습니다. [공식 CPU 필드](https://developers.cloudflare.com/workers/observability/query-builder/), [관측 API](https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/).
+CPU 도구는 실제 Cloudflare invocation 로그를 HTTPS 응답의 CF Ray ID와 맞춰 요청별 CPU를 검사합니다. 모든 요청의 계측이 있고 CPU가 10ms 이하이며 outcome이 정상이고 기능 검사와 10회 로그인이 완료되어야 통과합니다. 일부 실시간 CPU 표본은 확보했지만 전체 요청 검증은 미완료입니다. 현재 역사 로그 조회는 403이며 Workers Observability Write 권한이 필요합니다. 성공 응답 형식도 실제 확인해야 합니다. 지연으로 로그가 누락되면 통과하지 않습니다. Workers Logs는 preview에만 100% 수집 설정을 사용합니다. API는 Wrangler 로그인 토큰을 출력 없이 읽거나 `CLOUDFLARE_API_TOKEN`을 사용합니다. 구독 조회가 거부되면 계정에 한정된 **Billing Read**를 포함하는 읽기 권한이 필요하며 Billing Write는 사용하지 않습니다. 원시 로그·헤더·쿠키는 보고서에 저장하지 않습니다. [공식 CPU 필드](https://developers.cloudflare.com/workers/observability/query-builder/), [관측 API](https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/).
 
 가상 관리자·직원을 패스키 등록하고 로그인 → 출근·퇴근 → 생산량 → 신청·승인·반려·재검토 → 월간·연간 조회 → 로그아웃·재로그인을 브라우저에서 확인합니다. 잘못된 서명·UV 누락·다른 Origin·등록권 재사용도 거부되어야 합니다.
 
@@ -170,12 +170,12 @@ npx wrangler d1 execute onwork-production --env production --remote --file "$BUN
 
 CI는 Node 회귀 검사·workerd/D1 통합 검사·이전 검사·Workers dry-run 빌드가 모두 성공해야 artifact를 만듭니다. 배포는 해당 커밋의 검증된 번들을 재빌드하지 않고 사용하며 main이 더 최신이면 중단합니다. 배포 직전 구독 API를 **GET으로만** 읽어 유료 Workers/D1 구독이 있거나 무료 상태를 확인할 수 없으면 차단합니다. 자동 배포는 D1 이전·초기화·운영 DB 복구를 실행하지 않습니다.
 
-DB 초기 이전과 schema migration은 자동 코드 배포와 분리되어 있습니다. 이후 DB 변경도 별도 백업과 검증 후 추가 방식으로 적용해야 합니다. 기존 테이블·열 삭제 또는 데이터 교체를 자동 workflow에 넣지 않습니다. D1 원격 백업·복원과 GitHub 변수·토큰·branch rule 설정은 아직 실행하지 않았습니다.
+DB 초기 이전과 schema migration은 자동 코드 배포와 분리되어 있습니다. 이후 DB 변경도 별도 백업과 검증 후 추가 방식으로 적용해야 합니다. 기존 테이블·열 삭제 또는 데이터 교체를 자동 workflow에 넣지 않습니다. 테스트 D1 원격 export와 별도 로컬 DB 복원 검증을 완료했습니다. 운영 D1 복원과 GitHub 자동 배포 변수·branch rule 설정은 실행하지 않았습니다.
 
 ## 현재 완료 상태
 
 완료: Workers Fetch와 Assets 코드, UV 필수 패스키 등록·로그인, 관리자 재인증에 결합된 신규 직원 발급·분실 복구, 기존 scrypt 해시 보존과 로컬 비밀번호 검증 이전 도구, 권한·CSRF 검사, D1 원자적 업무 저장, 페이지 조회, SQLite 이전·검증 도구, 별도 테스트 DB 구성, 기본 비활성 GitHub 자동 배포 설정.
 
-미확인: 실제 Free CPU·무료 할당량·HTTPS 브라우저/기기 동작, 원격 D1 이전·실제 운영 배포, 추가 변경 코드의 GitHub CI 결과.
+미확인: 최신 코드의 전체 요청별 Free CPU·무료 할당량, 운영 D1 이전·실제 운영 배포, 오늘 변경의 GitHub CI 결과.
 
-막힘: 기기 인증 코드 만료로 Cloudflare CLI 미연결, 실제 계정 ID·D1 ID·workers.dev 주소 미확정. 신규 직원 발급과 분실 복구의 실제 무료 preview CPU·브라우저 확인도 대기 중입니다.
+완료: 실제 HTTPS 기능 검사 129개 요청·14회 로그인, Chromium 브라우저 회귀 검사 9개, 사용자 Windows PIN 관리자 로그인. 로그인 계정별 allowCredentials와 ID 정규화·challenge 계정 결합을 적용했고 기존 패스키를 보존했습니다. 로그인 화면에서 관리자 계정 ADMIN 또는 직원 번호를 입력합니다. CPU 검증은 관측 권한 확보와 최신 코드의 새 검사 보고서가 필요합니다. 자세한 인계와 백업은 [HANDOFF.md](HANDOFF.md)를 확인합니다.
