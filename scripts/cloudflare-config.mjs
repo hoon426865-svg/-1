@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {resolve} from 'node:path';
+import {resolve,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 export function validateConfig(config,environment,attestation){
   const preview=config.env?.preview,production=config.env?.production,selected=config.env?.[environment];
@@ -23,7 +23,7 @@ export function validateConfig(config,environment,attestation){
   }
   return true;
 }
-export function authenticationHash(){const h=createHash('sha256');for(const file of ['worker/security.mjs','worker/passkeys.mjs','worker/passkey-admin.mjs','worker/index.mjs','package-lock.json'])h.update(readFileSync(file));return h.digest('hex');}
+export function authenticationHash(sourceRoot='.'){const h=createHash('sha256');for(const file of ['worker/security.mjs','worker/passkeys.mjs','worker/passkey-admin.mjs','worker/index.mjs','package-lock.json'])h.update(readFileSync(join(sourceRoot,file)));return h.digest('hex');}
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){
   if(process.argv[2]==='--auth-hash')console.log(authenticationHash());
   else {validateConfig(JSON.parse(readFileSync('wrangler.jsonc','utf8')),process.argv[2],process.env.FREE_AUTH_CODE_SHA256);console.log('Cloudflare environment isolation and authentication attestation verified.');}

@@ -1,5 +1,5 @@
 import {settings,token,digest,hashPassword,verifyPassword,dummyHash} from './security.mjs';
-import {check,one,all,begin,consistent,audit,boundedDatabase} from './d1.mjs';
+import {check,one,all,begin,consistent,audit,boundedDatabase,statement} from './d1.mjs';
 import {koreaNow,needsReview,validateQuantity} from '../public/domain.js';
 import {saveRequest,decideRequest,listRequests,requestHistory,reportPeriod} from './work-requests.mjs';
 import {passkeyRoute} from './passkeys.mjs';
@@ -29,6 +29,7 @@ async function dataPages(db,user,params,report=false){
   if(period)Object.assign(result,period);
   const definitions={employees:['id',user.role==='employee'?'id=?':params.get('employeeId')&&report?'id=?':'',user.role==='employee'?[user.employee_id]:params.get('employeeId')&&report?[params.get('employeeId')]:[]],tasks:['id','',[]],attendance:['id','',[]],production:['id','',[]],overtime:['id','',[]],work_requests:['id','',[]]};
   const tables=report?['employees','attendance','production','work_requests']:['employees','tasks','attendance','production','overtime'];
+  const queries=[],selected=[];
   for(const table of tables){
     if(cursor[table]==='DONE'){result[table==='work_requests'?'requests':table]=[];next[table]='DONE';continue;}
     const [,filter,filterArgs]=definitions[table],where=filter?[filter]:[],args=[...filterArgs];
@@ -39,7 +40,11 @@ async function dataPages(db,user,params,report=false){
     }
     if(table==='overtime'&&user.role==='employee'){where.push('attendance_id IN(SELECT id FROM attendance WHERE employee_id=?)');args.push(user.employee_id);}
     if(cursor[table]){where.push('id>?');args.push(cursor[table]);}
-    const items=await all(db,`SELECT * FROM ${table} ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY id LIMIT 201`,...args);
+    queries.push(statement(db,`SELECT * FROM ${table} ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY id LIMIT 201`,args));selected.push(table);
+  }
+  const pages=queries.length?await db.batch(queries):[];
+  for(let i=0;i<selected.length;i++){
+    const table=selected[i],items=pages[i].results;
     next[table]=items.length>200?items[199].id:'DONE';
     result[table==='work_requests'?'requests':table]=items.slice(0,200);
   }

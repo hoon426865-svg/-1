@@ -21,12 +21,15 @@ export function boundedDatabase(database,limit=50){
 // transaction: every business/auth write increments the revision via triggers.
 // Conflicting reads abort the entire batch (including history/audit/session).
 // No BEGIN/COMMIT or process-local locks: D1 batch provides the atomic boundary.
-export async function begin(db) {
-  const row=await one(db,'SELECT revision FROM worker_revision WHERE id=1');
+export async function begin(db,reads=[]) {
+  // Related authentication reads share one D1 snapshot and one network response.
+  const results=reads.length?await db.batch([statement(db,'SELECT revision FROM worker_revision WHERE id=1'),...reads]):null;
+  const row=results?results[0].results[0]:await one(db,'SELECT revision FROM worker_revision WHERE id=1');
   check(row,503,'DB 이전 검증이 필요합니다.');
   const writes=[];
   return {
     revision:row.revision,
+    reads:results?.slice(1),
     add(sql,...args){writes.push(statement(db,sql,args));},
     async commit(){
       if(!writes.length)return;

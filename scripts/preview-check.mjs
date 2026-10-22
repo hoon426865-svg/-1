@@ -8,7 +8,7 @@ import {createPrivateKey,randomUUID} from 'node:crypto';
 import {ticket,authenticator} from '../tests/worker/virtual-authenticator.mjs';
 import {collectPages} from '../public/worker-pages.js';
 import {validateConfig,authenticationHash} from './cloudflare-config.mjs';
-const directory=resolve(process.argv[2]||''),config=JSON.parse(readFileSync('wrangler.jsonc','utf8'));
+const directory=resolve(process.argv[2]||''),config=JSON.parse(readFileSync(process.argv[3]||'wrangler.jsonc','utf8'));
 if(!directory.startsWith(resolve('private')+'/'))throw Error('Private synthetic fixture required');
 validateConfig(config,'preview');
 if(existsSync(join(directory,'https-results.json')))throw Error('Preview report exists; preserve it and use a new synthetic fixture/DB for another run');
@@ -54,5 +54,5 @@ try{
   functionalVerified=true;
   console.log('Actual preview HTTPS login and business checks passed; CPU metrics still require the separate telemetry check.');
 }finally{
-  writeFileSync(join(directory,'https-results.json'),JSON.stringify({synthetic:true,origin,worker:config.env.preview.name,authHash:authenticationHash(),from:start-1000,to:Date.now()+1000,samples,functionalVerified,cloudflareFreeCpuVerified:false,physicalBrowserVerified:false},null,2)+'\n',{flag:'wx',mode:0o600});
+  writeFileSync(join(directory,'https-results.json'),JSON.stringify({synthetic:true,origin,worker:config.env.preview.name,authHash:authenticationHash(process.argv[4]),from:start-1000,to:Date.now()+1000,samples,functionalVerified,cloudflareFreeCpuVerified:false,physicalBrowserVerified:false},null,2)+'\n',{flag:'wx',mode:0o600});
 }

@@ -4,7 +4,7 @@
 
 Workers의 정상 로그인은 **WebAuthn 패스키(ES256, 사용자 확인 UV 필수)**로 변경했습니다. 기존 비밀번호 검증은 Workers 요청에서 실행하지 않습니다. 계정 이전 때만 신뢰하는 로컬 환경에서 기존 scrypt 설정 N 16384, r 8, p 1, 64바이트로 검증하고, 오프라인 발급키로 서명한 일회용 등록권을 사용합니다. 원본 해시·계정 ID·권한·업무 기록은 그대로 보존합니다. 단순 클라이언트 해시나 약한 KDF로 대체하지 않습니다. 공개키만 Worker에 설정하고 발급용 개인키는 배포하지 않습니다.
 
-**실제 무료 preview CPU 검증은 아직 미완료입니다.** 로컬 workerd의 기존 scrypt 검증 평균은 약 42ms였습니다. 패스키 로그인 검증 경로는 쿼리 최적화 후 10회 평균 약 9ms, 최대 20ms였지만 이 값에는 로컬 D1 프로세스 작업이 포함되고 10ms 단위로 측정되어 Cloudflare 요청별 CPU와 같지 않습니다. 패스키 등록 옵션과 등록 검증 1회는 각각 30ms와 10ms로 측정되었습니다. 이 결과로 Free 통과를 선언하지 않습니다. 2026-10-07 Cloudflare 연결과 별도 테스트 D1 배포, HTTPS 주요 기능 검사를 완료했습니다. 사용자가 실제 Windows PIN으로 관리자 화면 진입을 확인했습니다. 최신 코드의 전체 요청별 CPU 검증은 아직 미완료입니다. 운영 배포와 자동 배포는 계속 차단합니다.
+**2026-10-22 무료 CPU 검증은 아직 미통과입니다.** 별도 가상 DB에서 쿼리 배치·등록권 조회·SHA-256 처리를 최적화했습니다. 확보된 표본의 최대 CPU는 등록 옵션 15→10ms, 로그인 검증 12→7ms, 보고서 13→4ms로 줄었습니다. 다만 수정 후 로그인 옵션 16ms 1건과 계측 누락 29건이 남았습니다. 두 실행 모두 129개 기능 요청·14회 로그인은 성공했지만 계측 소스와 표본 수가 달라 전체 통과를 보증하지 않습니다. 최신 증거, 실행 제약과 재개 절차는 [HANDOFF.md](HANDOFF.md)를 따릅니다. 운영 배포와 자동 배포는 계속 차단합니다.
 
 [SimpleWebAuthn 서버 검증 API](https://simplewebauthn.dev/docs/packages/server), [패스키 사용자 확인 설정](https://simplewebauthn.dev/docs/advanced/passkeys).
 ## 무료 제한과 검증 범위
@@ -119,7 +119,7 @@ node scripts/preview-cpu.mjs private/preview-run-UNUSED
 
 HTTPS 검사는 실제 preview에 WebAuthn ES256 서명을 보내 로그인·출퇴근·생산량·신청 승인·월간/연간 조회·새 직원 발급·복구·권한 차단·로그아웃을 확인합니다. 10회 반복 로그인·업무 요청을 포함합니다. 브라우저의 물리 기기 검증을 대신하지 않으므로 실제 브라우저에서도 패스키 등록과 관리자 재인증을 확인해야 합니다. 다시 검사할 때 기존 가상 DB/보고서를 덮어쓰지 않고 새 가상 DB·새 경로를 사용합니다.
 
-CPU 도구는 실제 Cloudflare invocation 로그를 HTTPS 응답의 CF Ray ID와 맞춰 요청별 CPU를 검사합니다. 모든 요청의 계측이 있고 CPU가 10ms 이하이며 outcome이 정상이고 기능 검사와 10회 로그인이 완료되어야 통과합니다. 일부 실시간 CPU 표본은 확보했지만 전체 요청 검증은 미완료입니다. 현재 역사 로그 조회는 403이며 Workers Observability Write 권한이 필요합니다. 성공 응답 형식도 실제 확인해야 합니다. 지연으로 로그가 누락되면 통과하지 않습니다. Workers Logs는 preview에만 100% 수집 설정을 사용합니다. API는 Wrangler 로그인 토큰을 출력 없이 읽거나 `CLOUDFLARE_API_TOKEN`을 사용합니다. 구독 조회가 거부되면 계정에 한정된 **Billing Read**를 포함하는 읽기 권한이 필요하며 Billing Write는 사용하지 않습니다. 원시 로그·헤더·쿠키는 보고서에 저장하지 않습니다. [공식 CPU 필드](https://developers.cloudflare.com/workers/observability/query-builder/), [관측 API](https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/).
+CPU 도구는 실제 Cloudflare invocation 로그를 HTTPS 응답의 CF Ray ID와 맞춰 요청별 CPU를 검사합니다. 모든 요청의 계측이 있고 CPU가 10ms 이하이며 outcome이 정상이고 기능 검사와 10회 로그인이 완료되어야 통과합니다. 일부 실시간 CPU 표본은 확보했지만 전체 요청 검증은 미완료입니다. 현재 Workers Observability Write 토큰으로 조회에 성공하며 응답 형식을 확인했습니다. 일부 invocation CPU 부재는 여전히 조사 중입니다. 지연으로 로그가 누락되면 통과하지 않습니다. Workers Logs는 preview에만 100% 수집 설정을 사용합니다. API는 Wrangler 로그인 토큰을 출력 없이 읽거나 `CLOUDFLARE_API_TOKEN`을 사용합니다. 구독 조회가 거부되면 계정에 한정된 **Billing Read**를 포함하는 읽기 권한이 필요하며 Billing Write는 사용하지 않습니다. 원시 로그·헤더·쿠키는 보고서에 저장하지 않습니다. [공식 CPU 필드](https://developers.cloudflare.com/workers/observability/query-builder/), [관측 API](https://developers.cloudflare.com/api/resources/workers/subresources/observability/subresources/telemetry/methods/query/).
 
 가상 관리자·직원을 패스키 등록하고 로그인 → 출근·퇴근 → 생산량 → 신청·승인·반려·재검토 → 월간·연간 조회 → 로그아웃·재로그인을 브라우저에서 확인합니다. 잘못된 서명·UV 누락·다른 Origin·등록권 재사용도 거부되어야 합니다.
 
