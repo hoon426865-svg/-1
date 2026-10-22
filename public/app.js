@@ -1,9 +1,13 @@
 import { totals, needsReview } from './domain.js';
 import { mountWorkRequests } from './work-requests.js';
+import { collectPages } from './worker-pages.js';
+import { renderPasskeyLogin, authorizePasskeyOperation, showEnrollmentInvite } from './passkeys.js';
+import { reportAuthFailure } from './auth-diagnostics.js';
 
 const screen = document.querySelector('#screen');
 const account = document.querySelector('#account');
 let me = null, state = null, selectedDate = '', epoch = 0;
+let authMode = 'password';
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const time = value => value ? esc(value.slice(0, 5)) : '—';
 const notice = message => { document.querySelector('#notice').textContent = message; };
@@ -17,15 +21,28 @@ function clearSession(message = '') {
   renderLogin();
   notice(message);
 }
-async function api(path, body) {
-  const response = await fetch(path, {
-    method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'same-origin',
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': me?.csrf || '', 'X-Onwork-Origin': location.origin },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const data = await response.json();
+async function api(path, body, singlePage = false, options = {}) {
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+  let response, data;
+  try {
+    response = await fetch(path, {
+      method: body === undefined ? 'GET' : 'POST', credentials: 'same-origin', cache: 'no-store', referrerPolicy: 'same-origin',
+      signal: controller.signal,
+      headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': me?.csrf || '', 'X-Onwork-Origin': location.origin },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    try { data = await response.json(); }
+    catch (cause) {
+      if (controller.signal.aborted) throw cause;
+      throw Object.assign(Error('서버 응답을 읽지 못했습니다. 잠시 후 다시 시도해주세요.'), { code: 'INVALID_RESPONSE', status: response.status });
+    }
+    if (!data || typeof data !== 'object') throw Object.assign(Error('서버 응답 형식이 올바르지 않습니다. 잠시 후 다시 시도해주세요.'), { code: 'INVALID_RESPONSE', status: response.status });
+  } catch (failure) {
+    if (failure.code === 'INVALID_RESPONSE') { failure.requestId = response?.headers.get('X-Onwork-Request-ID'); throw failure; }
+    throw Object.assign(Error(controller.signal.aborted ? '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.' : '서버에 연결하지 못했습니다. 인터넷 연결을 확인하고 다시 시도해주세요.'), { code: controller.signal.aborted ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR' });
+  } finally { clearTimeout(timer); }
   if (!response.ok) {
-    if (response.status === 401 && path !== '/api/login') clearSession('로그인이 필요합니다.');
+    if (response.status === 401 && path !== '/api/login' && !path.startsWith('/api/passkeys/') && !options.preserveLoginForm) clearSession('로그인이 필요합니다.');
     if (response.status === 403 && me && path !== '/api/password' && path !== '/api/logout') {
       // A password reset can invalidate permissions while this page is open.
       const current = await fetch('/api/me', { cache: 'no-store' });
@@ -34,9 +51,11 @@ async function api(path, body) {
     }
     const error = Error(data.error || '요청에 실패했습니다.');
     error.status = response.status;
+    error.code = 'HTTP_ERROR';
+    error.requestId = response.headers.get('X-Onwork-Request-ID');
     throw error;
   }
-  return data;
+  return body === undefined && !singlePage ? collectPages(path, data, page => api(page, undefined, true)) : data;
 }
 function bindForm(selector, action) {
   const form = screen.querySelector(selector);
@@ -52,6 +71,10 @@ function bindForm(selector, action) {
   });
 }
 function renderLogin() {
+  if(authMode==='passkey'){renderPasskeyLogin(screen,bindForm,api,load,login=>{
+    clearSession('패스키 등록이 완료되었습니다. 이제 패스키로 로그인 버튼을 눌러주세요.');
+    screen.querySelector('#passkey-login input[name="login"]').value=login||'';
+  });return;}
   screen.innerHTML = `<section class="card auth-card"><h1>로그인</h1><p class="muted">발급받은 계정으로 로그인하세요. 직원은 사번을 사용합니다.</p>
     <form id="login-form"><label>계정<input name="login" autocomplete="username" maxlength="30" required></label>
     <label>비밀번호<input name="password" type="password" autocomplete="current-password" maxlength="128" required></label>
@@ -104,9 +127,10 @@ function renderPassword() {
     clearSession('비밀번호를 변경했습니다. 새 비밀번호로 로그인하세요.');
   });
 }
-async function load() {
+async function load({afterLogin=false} = {}) {
   const requestEpoch = ++epoch;
   const setup = await api('/api/setup');
+  authMode = setup.authMode || 'password';
   if (requestEpoch !== epoch) return;
   if (location.origin !== setup.appOrigin) {
     me = null; state = null;
@@ -124,17 +148,31 @@ async function load() {
   }
   if (requestEpoch !== epoch) return;
   if (setup.required) { renderSetup(); return; }
-  const user = await api('/api/me');
+  let user;
+  try { user = await api('/api/me', undefined, false, { preserveLoginForm: afterLogin }); }
+  catch (error) {
+    error.stage = 'session-check';
+    if (afterLogin && error.status === 401) {
+      error.code = 'SESSION_NOT_STORED';
+      error.message = '기기 인증은 완료됐지만 로그인 세션을 확인하지 못했습니다. 앱 주소를 별도 탭에서 열고 사이트 쿠키가 허용되어 있는지 확인한 뒤 다시 로그인해주세요.';
+    }
+    throw error;
+  }
   if (requestEpoch !== epoch) return;
   me = user;
   renderAccount();
   if (me.mustChange) { renderPassword(); return; }
-  const snapshot = await api('/api/state');
+  let snapshot;
+  try { snapshot = await api('/api/state'); }
+  catch (error) { error.stage = 'state-load'; throw error; }
   if (requestEpoch !== epoch) return;
   state = snapshot;
   selectedDate ||= state.today;
   history.replaceState(null, '', me.role === 'admin' ? '/admin' : '/employee');
-  render();
+  try { render(); notice(''); }
+  catch {
+    throw Object.assign(Error('로그인은 완료됐지만 업무 화면을 표시하지 못했습니다. 상단 새로고침 버튼을 눌러주세요.'), { code: 'CLIENT_RUNTIME_ERROR', stage: 'screen-render' });
+  }
 }
 function render() {
   if (!me || !state) return;
@@ -193,13 +231,18 @@ function renderAdmin() {
       const record = records.find(item => item.employeeId === person.id), total = totals(state.production, selectedDate, person.id);
       return `<tr><td>${esc(person.name)}<span class="team">${esc(person.number)} · ${esc(person.team)}${person.active ? '' : ' · 퇴사'}</span></td><td>${time(record?.in)}</td><td>${record?.outDate && record.outDate !== record.date ? esc(record.outDate) : ''} ${time(record?.out)}</td><td>${total.good}</td><td>${total.bad}</td></tr>`;
     }).join('')}</tbody></table></div></section>
-    <section class="card"><h2>직원 관리</h2><p>사번이 로그인 계정이 됩니다. 임시 비밀번호는 첫 로그인 후 변경해야 합니다.</p>
-    <form id="add-employee-form" class="employee-form">${employeeFields()}<label>임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="primary">직원 추가</button><p role="alert" class="task-error"></p></form>
-    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form><form class="employee-form reset-password-form" data-id="${esc(person.id)}"><label>${esc(person.number)} 새 임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>임시 비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="secondary">비밀번호 재설정</button><p class="small">이 직원의 모든 로그인 세션이 종료되며, 다음 로그인 시 비밀번호를 변경해야 합니다.</p><p role="alert" class="task-error"></p></form>`).join('')}</div></section>
+    <section class="card"><h2>직원 관리</h2><p>${authMode === 'passkey' ? '직원에게 일회용 등록권을 전달하면 본인의 기기에 패스키를 등록할 수 있습니다. 계정 발급과 복구에는 관리자 패스키 재인증이 필요합니다.' : '사번이 로그인 계정이 됩니다. 임시 비밀번호는 첫 로그인 후 변경해야 합니다.'}</p>
+    <form id="add-employee-form" class="employee-form">${employeeFields()}${authMode === 'passkey' ? '' : '<label>임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>'}${reasonField()}<button class="primary">직원 추가</button><p role="alert" class="task-error"></p></form>
+    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form><form class="employee-form reset-password-form" data-id="${esc(person.id)}">${authMode === 'passkey' ? `<label><input name="identityConfirmed" type="checkbox" required> ${esc(person.number)} 직원의 본인을 직접 확인했습니다.</label>${reasonField()}<button class="secondary">분실 패스키 복구</button><p class="small">기존 패스키와 모든 세션을 폐기하고 일회용 등록권을 발급합니다.</p>` : `<label>${esc(person.number)} 새 임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>임시 비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="secondary">비밀번호 재설정</button><p class="small">이 직원의 모든 로그인 세션이 종료되며, 다음 로그인 시 비밀번호를 변경해야 합니다.</p>`}<p role="alert" class="task-error"></p></form>`).join('')}</div></section>
     <section class="card"><h2>작업 종류 관리</h2><form id="add-task-form" class="task-form"><label>새 작업 이름<input name="name" maxlength="40" required></label>${reasonField()}<button class="primary">작업 추가</button><p role="alert" class="task-error"></p></form>
     ${state.tasks.map(task => `<form class="task-form edit-task-form" data-id="${esc(task.id)}"><label>작업 이름<input name="name" value="${esc(task.name)}" maxlength="40" required></label>${reasonField()}<button class="secondary">이름 수정</button><p role="alert" class="task-error"></p></form>`).join('')}</section>`;
   document.querySelector('#admin-date').onchange = event => { if (event.target.value) { selectedDate = event.target.value; render(); } };
-  bindForm('#add-employee-form', body => save('/api/admin/employee', body, '직원 계정을 추가했습니다.'));
+  bindForm('#add-employee-form', async body => {
+    if (authMode !== 'passkey') return save('/api/admin/employee', body, '직원 계정을 추가했습니다.');
+    const authorization = await authorizePasskeyOperation(api, 'create', body);
+    const result = await api('/api/admin/employee', { ...body, authorization });
+    await load(); showEnrollmentInvite(result);
+  });
   document.querySelectorAll('.edit-employee-form').forEach((form, i) => {
     const person = state.employees[i];
     bindForm(`.edit-employee-form[data-id="${person.id}"]`, body => save('/api/admin/employee', { ...body, id: person.id, version: person.version }, '직원 정보를 수정했습니다.'));
@@ -212,6 +255,12 @@ function renderAdmin() {
     };
   });
   state.employees.forEach(person => bindForm(`.reset-password-form[data-id="${person.id}"]`, async (body, form) => {
+    if (authMode === 'passkey') {
+      const details = { id: person.id, version: person.version, reason: body.reason, identityConfirmed: body.identityConfirmed === 'on' };
+      const authorization = await authorizePasskeyOperation(api, 'recover', details);
+      const result = await api('/api/admin/passkeys/recover', { ...details, authorization });
+      form.reset(); await load(); showEnrollmentInvite(result); return;
+    }
     if (body.password !== body.confirmation) throw Error('임시 비밀번호 확인이 일치하지 않습니다.');
     await api('/api/admin/reset-password', { id: person.id, password: body.password, reason: body.reason });
     form.reset();
@@ -226,6 +275,8 @@ function employeeFields(person = {}) {
 }
 function reasonField() { return '<label>변경 사유<input name="reason" maxlength="500" required></label>'; }
 window.addEventListener('pageshow', event => { if (event.persisted) { state = null; screen.replaceChildren(); load().catch(error => notice(error.message)); } });
+window.addEventListener('error', () => reportAuthFailure('client-runtime', {code:'CLIENT_RUNTIME_ERROR'}));
+window.addEventListener('unhandledrejection', () => reportAuthFailure('client-runtime', {code:'CLIENT_RUNTIME_ERROR'}));
 load().catch(error => {
   if (!me) renderLogin();
   notice(error.message);

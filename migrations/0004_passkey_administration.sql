@@ -1,0 +1,11 @@
+CREATE TABLE passkey_invites(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),password_digest TEXT NOT NULL,expires INTEGER NOT NULL,issued_by TEXT NOT NULL REFERENCES users(id),created_at TEXT NOT NULL,used_at TEXT);
+CREATE INDEX passkey_invites_user ON passkey_invites(user_id);
+CREATE TABLE passkey_admin_challenges(id TEXT PRIMARY KEY,challenge TEXT NOT NULL,user_id TEXT NOT NULL REFERENCES users(id),operation_hash TEXT NOT NULL,expires INTEGER NOT NULL);
+CREATE TABLE passkey_account_state(user_id TEXT PRIMARY KEY REFERENCES users(id),last_recovery INTEGER NOT NULL);
+CREATE TRIGGER revision_passkey_invites_insert AFTER INSERT ON passkey_invites BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_invites_update AFTER UPDATE ON passkey_invites BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_invites_delete AFTER DELETE ON passkey_invites BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_admin_challenges_insert AFTER INSERT ON passkey_admin_challenges BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_admin_challenges_delete AFTER DELETE ON passkey_admin_challenges BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_account_state_insert AFTER INSERT ON passkey_account_state BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_account_state_update AFTER UPDATE ON passkey_account_state BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;

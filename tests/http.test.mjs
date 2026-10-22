@@ -25,6 +25,7 @@ test('실제 HTTP 서버에서 로그인 쿠키·권한·정적 화면·로그�
     assert.equal((await request('/admin')).status, 401);
     assert.equal((await request('/login')).status, 200);
     assert.equal((await request('/app.js')).status, 200);
+    assert.equal((await request('/auth-diagnostics.js')).status, 200);
     const credentials = { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify({ login: '001', password: f.password }) };
     const invalid = await request('/api/login', { ...credentials, body: JSON.stringify({ login: '001', password: f.key() }) });
     assert.equal(invalid.status, 401);
