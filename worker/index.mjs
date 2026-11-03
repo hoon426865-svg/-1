@@ -3,6 +3,7 @@ import {check,one,all,begin,consistent,audit,boundedDatabase,statement} from './
 import {koreaNow,needsReview,validateQuantity} from '../public/domain.js';
 import {saveRequest,decideRequest,listRequests,requestHistory,reportPeriod} from './work-requests.mjs';
 import {nextDate} from '../public/attendance-report.js';
+import {listResetItems,prepareReset,executeReset,resetBackups,resetBackup} from './test-data-reset.mjs';
 import {passkeyRoute} from './passkeys.mjs';
 import {adminOptions,provision} from './passkey-admin.mjs';
 import {attendanceReport,adjustAttendance,finalizeAttendance,reportCsvResponse} from './attendance-reports.mjs';
@@ -153,6 +154,11 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
       return finish({ok:true},200,{'Set-Cookie':cookie('',0)});
     }
     check(!user.must_change,403,'먼저 임시 비밀번호를 변경하세요.');
+    if(path==='/api/admin/test-data/items'&&method==='GET')return read(await listResetItems(db,user,url.searchParams,tx.revision));
+    if(path==='/api/admin/test-data/preview'&&method==='POST')return finish(await prepareReset(db,tx,user,body,stamp));
+    if(path==='/api/admin/test-data/execute'&&method==='POST')return finish(await executeReset(db,tx,user,body,stamp));
+    if(path==='/api/admin/test-data/backups'&&method==='GET')return read(await resetBackups(db,user));
+    if(path==='/api/admin/test-data/backup'&&method==='GET'){const response=await resetBackup(db,user,url.searchParams.get('id'));await consistent(db,tx.revision);return response;}
     if(['/api/admin/attendance-report','/api/admin/attendance-report/export'].includes(path)&&method==='GET'){
       const report=await attendanceReport(db,user,url.searchParams);await consistent(db,tx.revision);
       return path.endsWith('/export')?reportCsvResponse(report,tx.revision,!url.searchParams.get('after')):json({...report,revision:tx.revision});
@@ -249,7 +255,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
-  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
+  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/test-data-reset.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
   check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);

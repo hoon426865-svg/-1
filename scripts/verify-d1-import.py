@@ -29,8 +29,11 @@ def verify(expected_path, export_path, output):
                 raise ValueError('Source snapshot marker mismatch')
             if db.execute('SELECT count(*) FROM worker_guard').fetchone()[0]:
                 raise ValueError('Transaction guard is not empty')
+            for table in ['test_reset_previews','test_reset_items','test_reset_guard']:
+                if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone() and db.execute('SELECT count(*) FROM "'+table+'"').fetchone()[0]:
+                    raise ValueError('Reset confirmation state must not be migrated: '+table)
             required=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'revision_%'")]
-            if len(required) not in (48,54,61,66):
+            if len(required) not in (48,54,61,66,70):
                 raise ValueError('Expected revision triggers missing')
     os.umask(0o077)
     with open(output,'x') as f:

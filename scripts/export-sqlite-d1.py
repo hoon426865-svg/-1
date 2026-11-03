@@ -6,7 +6,7 @@ Run during cutover after disabling writes in the old application.
 import argparse, hashlib, json, os, pathlib, sqlite3
 
 PERSISTENT = ['schema_version','employees','tasks','users','attendance','production','overtime','audit','initial_setup','work_requests','work_request_history']
-ATTENDANCE = ['attendance_policies','attendance_originals','attendance_adjustments','attendance_finalizations']
+ATTENDANCE = ['attendance_policies','attendance_originals','attendance_adjustments','attendance_finalizations','test_reset_backups']
 VOLATILE = ['sessions','qr_challenges','qr_uses','deletion_confirmations','login_limits']
 
 def table_manifest(db, table):

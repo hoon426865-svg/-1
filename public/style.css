@@ -66,3 +66,12 @@ input[type=checkbox]{display:inline-block;width:auto;min-height:auto;margin:0 8p
 #attendance-report-result td .small { max-width: 230px; white-space: normal; }
 /* Keep attendance exports readable on narrow screens without page overflow. */
 [data-attendance-report] table{min-width:1120px}[data-attendance-report] th,[data-attendance-report] td{vertical-align:top}[data-attendance-report] th{white-space:nowrap}[data-attendance-summary] td:nth-child(n+2){min-width:105px}[data-attendance-person] td:nth-child(2),[data-attendance-person] td:nth-child(3){min-width:165px}[data-attendance-person] td:last-child{min-width:210px}.attendance-rules{margin:12px 0 18px}.attendance-rules summary{cursor:pointer;color:#315c50;font-weight:650}.attendance-scroll-hint{margin-bottom:0}
+/* Selection and confirmation remain usable on narrow screens. */
+.reset-card input[type=checkbox]{width:20px;height:20px;min-height:20px;margin:0;vertical-align:middle;accent-color:var(--primary,#215d50)}
+.reset-card .table-wrap table{min-width:680px}
+.reset-card td{min-width:90px;max-width:420px;overflow-wrap:anywhere}
+.reset-card th:first-child,.reset-card td:first-child{min-width:65px}
+.reset-confirm{margin-top:20px;padding:20px;border:1px solid #c67c71;border-radius:12px;background:#fff8f6}
+.reset-confirm label{display:block;margin:12px 0}
+.reset-confirm textarea{display:block;width:100%;min-height:80px;margin-top:8px;padding:12px;border:1px solid #d5dedf;border-radius:8px;font:inherit}
+.reset-confirm button{margin:8px 8px 0 0}

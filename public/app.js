@@ -1,6 +1,7 @@
 import { totals, needsReview } from './domain.js';
 import { mountWorkRequests } from './work-requests.js';
 import { mountAttendanceReports } from './attendance-reports.js';
+import { mountTestDataReset } from './test-data-reset.js';
 import { collectPages } from './worker-pages.js';
 import { renderPasskeyLogin, authorizePasskeyOperation, showEnrollmentInvite } from './passkeys.js';
 import { attendanceStartTime } from './attendance-report.js';
@@ -201,7 +202,7 @@ function render() {
   const drafts = captureDrafts(screen);
   if (me.role === 'admin') renderAdmin(); else renderEmployee();
   if (!me || !state) return;
-  screen.insertAdjacentHTML('beforeend', `<div data-page="requests" hidden>${heading('근무 신청',me.role==='admin'?'직원의 신청을 검토하고 처리 이력을 확인하세요.':'내 근무 변경 신청과 처리 이력을 확인하세요.')}<div data-request-slot="requests"></div></div>${me.role==='admin'?`<div data-page="reports" hidden>${heading('통계·보고서','직원별 월간·연간 기록을 조회하세요.')}<div data-request-slot="attendance-report"></div><div data-request-slot="report"></div></div>`:''}<div data-page="settings" hidden>${heading('설정','현재 로그인한 계정과 앱 정보')}<section class="card"><h2>내 계정</h2><dl class="account-details"><div><dt>계정</dt><dd>${esc(me.login)}</dd></div><div><dt>권한</dt><dd>${me.role==='admin'?'관리자':'직원'}</dd></div><div><dt>로그인 방식</dt><dd>${authMode==='passkey'?'패스키 · 기기 PIN 또는 생체인증':'비밀번호'}</dd></div><div><dt>시간 기준</dt><dd>한국 시간 (Asia/Seoul)</dd></div></dl><div class="employee-actions"><button type="button" class="secondary" id="settings-refresh">최신 자료 불러오기</button><button type="button" class="secondary" id="settings-logout">로그아웃</button></div></section></div>`);
+  screen.insertAdjacentHTML('beforeend', `<div data-page="requests" hidden>${heading('근무 신청',me.role==='admin'?'직원의 신청을 검토하고 처리 이력을 확인하세요.':'내 근무 변경 신청과 처리 이력을 확인하세요.')}<div data-request-slot="requests"></div></div>${me.role==='admin'?`<div data-page="reports" hidden>${heading('통계·보고서','직원별 월간·연간 기록을 조회하세요.')}<div data-request-slot="attendance-report"></div><div data-request-slot="report"></div></div>`:''}<div data-page="settings" hidden>${heading('설정','현재 로그인한 계정과 앱 정보')}<section class="card"><h2>내 계정</h2><dl class="account-details"><div><dt>계정</dt><dd>${esc(me.login)}</dd></div><div><dt>권한</dt><dd>${me.role==='admin'?'관리자':'직원'}</dd></div><div><dt>로그인 방식</dt><dd>${authMode==='passkey'?'패스키 · 기기 PIN 또는 생체인증':'비밀번호'}</dd></div><div><dt>시간 기준</dt><dd>한국 시간 (Asia/Seoul)</dd></div></dl><div class="employee-actions"><button type="button" class="secondary" id="settings-refresh">최신 자료 불러오기</button><button type="button" class="secondary" id="settings-logout">로그아웃</button></div></section>${me.role==='admin'?'<div data-request-slot="test-reset"></div>':''}</div>`);
   for (const [mode,panel] of requestPanels) {
     const slot=screen.querySelector(`[data-request-slot="${mode}"]`);
     if (slot) {slot.append(panel.root);panel.refresh({employees:state.employees,today:state.today});}
@@ -211,12 +212,12 @@ function render() {
   document.querySelector('#settings-logout').onclick=()=>document.querySelector('#logout').click();
   mountNavigation(me,page=>{
     notice('');
-    for(const mode of page==='requests'?['requests']:page==='reports'?['attendance-report','report']:[]){
+    for(const mode of page==='requests'?['requests']:page==='reports'?['attendance-report','report']:page==='settings'&&me.role==='admin'?['test-reset']:[]){
       if(requestPanels.has(mode))continue;
       const root=document.createElement('div');
       screen.querySelector(`[data-request-slot="${mode}"]`).append(root);
-      const mount=mode==='attendance-report'?mountAttendanceReports:mountWorkRequests;
-      const controller=mount({root,api,me,employees:state.employees,today:state.today,mode,onChange:()=>{requestPanels.get('report')?.refresh();requestPanels.get('attendance-report')?.refresh();}});
+      const mount=mode==='test-reset'?mountTestDataReset:mode==='attendance-report'?mountAttendanceReports:mountWorkRequests;
+      const controller=mount({root,api,me,employees:state.employees,today:state.today,mode,onChange:async()=>{if(mode==='test-reset'){await load();notice('선택한 테스트 기록을 삭제했습니다.');return;}requestPanels.get('report')?.refresh();requestPanels.get('attendance-report')?.refresh();}});
       requestPanels.set(mode,{root,...controller});
     }
   });
