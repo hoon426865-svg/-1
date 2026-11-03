@@ -1,5 +1,9 @@
 # 온워크 · 직원 출퇴근 및 생산량 관리
 
+시범 운영 대상은 **Cloudflare Workers Free + D1 Free + workers.dev**입니다. 서버 임대와 도메인 구매는 사용하지 않습니다. Workers 코드·D1 이전·테스트·자동 배포 설정은 [무료 운영 절차](docs/cloudflare-free.md)에 정리했습니다. 기존 Node 앱과 SQLite 파일은 이전 검증을 위해 보존합니다.
+
+**무료 운영 검증 대기:** Workers 로그인은 사용자 확인(UV)을 필수로 하는 ES256 패스키로 변경했습니다. 기존 scrypt 해시는 그대로 보존하며, 최초 이전 시 원본 DB를 읽기 전용으로 열어 기존 비밀번호를 동일한 강도로 로컬 검증한 뒤 15분짜리 일회용 등록권을 발급합니다. 로컬 기능 검증과 실제 Cloudflare Free CPU 검증은 별개입니다. Cloudflare 연결과 실제 검증이 끝나기 전에는 운영 배포를 켜지 않습니다. 아래 비밀번호 설정·변경 설명은 보존한 Node 앱의 절차이며, Workers 계정 등록은 무료 운영 문서를 따릅니다.
+
 Node.js 24 이상이 필요합니다. 로그인한 직원은 본인 출퇴근·생산 기록만 조회·입력하며, 관리자는 직원 계정·작업 종류와 전체 집계를 관리합니다. 데이터는 SQLite에 저장됩니다. 체험 직원 선택과 자동 예시 데이터는 로그인 화면에서 사용하지 않습니다.
 
 ## 설치와 최초 관리자 설정
@@ -202,7 +206,9 @@ CONFIRM_RESTORE=YES npm run restore
 
 ### 4. 검증된 커밋만 자동 배포
 
-`.github/workflows/ci.yml`은 다음 순서로 실행합니다.
+현재 `.github/workflows/ci.yml`은 Workers용 검사·배포로 전환했습니다. 아래 Docker와 SSH 설명은 보존된 기존 서버용 스크립트의 참고 자료이며, 무료 시범 운영에서는 실행하지 않습니다. 현재 자동 배포 설정은 [무료 운영 절차](docs/cloudflare-free.md)를 따르세요.
+
+기존 서버용 배포는 다음 순서를 전제로 작성되었습니다.
 
 `main push → npm ci → 구문·전체 테스트 → Docker 이미지 내부 전체 테스트 → 임시 DB Docker 통합 검사 → 동일 이미지 artifact → 서버 배포`
 
