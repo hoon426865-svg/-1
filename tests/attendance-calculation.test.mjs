@@ -13,6 +13,28 @@ test('08:30 경계와 초 단위 지각, 원본 보존 및 급여 미확정',()=
   const late=calculate([shift('08:30:01')]);assert.equal(late.basicMinutes,460-1/60);assert.equal(late.lateMinutes,1/60);
   assert.equal(calculate([shift('09:00:00')]).basicMinutes,430);
 });
+test('유급 휴게 20분과 무급 점심을 구분하고 기본 인정시간에만 반영한다',()=>{
+  const cases=[['08:00:00','17:30:00',60,20,480],['08:30:01','17:30:00',60,20,480-1/60],['10:35:00','17:30:00',60,15,355],['12:45:00','17:30:00',45,10,240],['10:35:00','10:38:00',0,3,3],['08:30:00','12:45:00',15,10,240],['08:30:00','16:00:00',60,20,390],['12:45:00','13:00:00',15,0,0]];
+  for(const [start,end,lunch,rest,paid] of cases){
+    const r=calculate([shift(start,end)]);assert.equal(r.lunchBreakMinutes,lunch);assert.equal(r.shortBreakMinutes,rest);assert.equal(r.paidBasicBreakMinutes,rest);assert.ok(Math.abs(r.payrollBasicMinutes-paid)<1e-9,`${start}~${end}`);assert.equal(r.payrollMinutes,null);
+  }
+  const duplicated=calculate([shift(),shift('09:00:00','17:30:00',{id:'a2'})]);assert.equal(duplicated.payrollBasicMinutes,480);
+  const extra=calculate([shift('08:30:00','19:30:00')]);assert.equal(extra.payrollBasicMinutes,480);assert.equal(extra.extraMinutes,120);
+  const overnight=calculate([shift('17:00:00','13:00:00',{out_at:'2026-11-04T13:00:00+09:00'})]);assert.equal(overnight.shortBreakMinutes,10);assert.equal(overnight.paidBasicBreakMinutes,0);assert.equal(overnight.payrollBasicMinutes,30);
+  const leave=request('annual','approved',{start_minute:510,end_minute:1050});assert.equal(calculate([],{requests:[leave]}).payrollBasicMinutes,0);
+});
+test('퇴근 누락·잘못된 구간·옛 기준·과거 확정본은 급여 인정시간을 자동 채우지 않는다',()=>{
+  const open=calculate([shift('08:30:00',null)]),invalid=calculate([shift('17:30:00','08:30:00')]);
+  assert.equal(open.payrollBasicMinutes,null);assert.equal(invalid.payrollBasicMinutes,null);
+  const old=calculate([shift()],{policy:{...POLICY,id:'attendance-2026-11-03-v1',payroll:'unconfirmed',breaks:POLICY.breaks.map(b=>({...b,paid:null}))}});assert.equal(old.payrollBasicMinutes,null);
+  assert.equal(calculate([shift()],{policy:{...POLICY,effectiveFrom:'2026-12-01'}}).payrollBasicMinutes,null);
+  const good=calculate([shift()]);const mixed=summarize([good,{...open,date:'2026-11-04'}]);
+  for(const s of mixed){assert.equal(s.payrollBasicMinutes,null);assert.equal(s.payrollBasicKnownMinutes,480);assert.equal(s.payrollBasicUnconfirmedDays,1);}
+  const legacy={...good,finalized:true};for(const k of ['payrollBasicMinutes','paidBasicBreakMinutes','lunchBreakMinutes','shortBreakMinutes'])delete legacy[k];
+  const serialized=JSON.stringify(legacy);assert.equal(summarize([legacy])[0].payrollBasicMinutes,null);assert.equal(JSON.stringify(legacy),serialized);
+  assert.match(csvRows([legacy]),/미분리/);assert.match(csvRows([good]),/급여 인정 기본시간\(분\)/);
+  assert.match(csvRows([good]),/"60","20","20","480","480","0"/);
+});
 test('겹치는 휴게만 공제: 휴게 중 출근·퇴근, 조퇴, 중복 구간 합집합',()=>{
   const cases=[['10:35:00','17:30:00',340,75],['12:45:00','17:30:00',230,55],['10:35:00','10:38:00',0,3],['08:30:00','12:45:00',230,25],['08:30:00','16:00:00',370,80]];
   for(const [start,end,net,rest] of cases){const r=calculate([shift(start,end)]);assert.equal(r.basicMinutes,net,`${start}~${end}`);assert.equal(r.breakMinutes,rest);}

@@ -20,6 +20,8 @@ test('브라우저 근태 보고서: 기간·상세·예외·원본·한글 CSV�
     await page.locator('#app-navigation a[href="#reports"]').click();const filter=page.locator('#attendance-report-filter');
     await filter.locator('[name=employeeId]').selectOption('e1');await filter.locator('button').click();
     await page.locator('#attendance-report-result [data-detail]').waitFor();assert.match(await page.locator('#attendance-report-result').innerText(),/460분/);
+    assert.match(await page.locator('#attendance-report-result').innerText(),/60분 \/ 20분/);
+    assert.match(await page.locator('[data-paid-basic]').first().innerText(),/8시간 0분/);
     await page.locator('[data-detail]').click();await page.locator('[data-adjust] [name=startAt]').fill('2026-12-01T08:20');await page.locator('[data-adjust] [name=reason]').fill('회사 지시 조기 준비');await page.locator('[data-adjust] button[value=save]').click();
     await page.waitForFunction(()=>document.querySelector('#attendance-report-result')?.textContent.includes('10분'));
     await page.locator('[data-detail]').click();assert.match(await page.locator('[data-attendance-detail]').innerText(),/회사 지시 조기 준비/);assert.match(await page.locator('[data-attendance-detail]').innerText(),/08:20:00/);

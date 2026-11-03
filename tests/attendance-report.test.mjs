@@ -14,7 +14,7 @@ test('근태 조회·CSV·정정 서버 권한, 서버 출퇴근 원본과 중�
     let row=(await a.call(url)).data.rows[0];assert.equal(row.missingOut,true);assert.equal(row.basicMinutes,0);
     f.setTime('2026-12-03T17:30:00+09:00');await e.login('001');await a.login('ADMIN');
     assert.equal((await e.call('/api/attendance',{action:'out',outAt:'1900-01-01T00:00:00Z'})).status,200);
-    row=(await a.call(url)).data.rows[0];assert.equal(row.basicMinutes,460);assert.equal(row.raw[0].outAt,'2026-12-03T08:30:00.000Z');
+    row=(await a.call(url)).data.rows[0];assert.equal(row.basicMinutes,460);assert.equal(row.payrollBasicMinutes,480);assert.equal(row.lunchBreakMinutes,60);assert.equal(row.shortBreakMinutes,20);assert.equal(row.raw[0].outAt,'2026-12-03T08:30:00.000Z');
     assert.equal((await e.call('/api/state')).data.attendance.length,1);
     const before=f.db.prepare('SELECT * FROM attendance_originals').get();
     const adjust={id:row.raw[0].id,version:row.raw[0].version,startAt:row.raw[0].inAt,reason:'회사 지시 조기 작업'};
@@ -49,10 +49,10 @@ test('확정본은 후속 승인·정정으로 자동 변경되지 않고 재확
     assert.equal((await a.call('/api/admin/attendance-report/finalize',body)).status,200);
     assert.equal((await a.call('/api/admin/attendance-report/finalize',body)).status,409);
     assert.equal((await a.call('/api/admin/attendance',{id:'a1',version:1,inAt:'2026-12-01T09:30:00+09:00',outAt:'2026-12-01T17:30:00+09:00',reason:'실제 작업 시작 확인'})).status,200);
-    const saved=(await a.call(url)).data.rows[0];assert.equal(saved.basicMinutes,460);assert.equal(saved.finalized,true);
+    const saved=(await a.call(url)).data.rows[0];assert.equal(saved.basicMinutes,460);assert.equal(saved.payrollBasicMinutes,480);assert.equal(saved.finalized,true);
     report=(await a.call(url+'&view=live')).data;assert.equal(report.rows[0].basicMinutes,400);assert.equal(report.rows[0].raw[0].inAt,'2026-12-01T08:30:00+09:00');assert.deepEqual(report.rows[0].correctionReasons,['실제 작업 시작 확인']);
     assert.equal((await a.call('/api/admin/attendance-report/finalize',{...body,revision:report.revision,version:1,reason:'확인된 정정 반영'})).status,200);
-    assert.equal((await a.call(url)).data.rows[0].basicMinutes,400);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM attendance_finalizations').get().n,2);
+    assert.equal((await a.call(url)).data.rows[0].basicMinutes,400);assert.equal((await a.call(url)).data.rows[0].payrollBasicMinutes,420);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM attendance_finalizations').get().n,2);
     assert.throws(()=>f.db.exec("UPDATE attendance_finalizations SET reason='변조'"));assert.throws(()=>f.db.exec("UPDATE attendance_originals SET in_at='변조'"));assert.throws(()=>f.db.exec('DELETE FROM attendance_policies'));
     insert(f,'open','2026-12-02','08:30:00',null);report=(await a.call(url+'&view=live')).data;
     assert.equal((await a.call('/api/admin/attendance-report/finalize',{...body,revision:report.revision,version:2})).status,409);
