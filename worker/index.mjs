@@ -237,7 +237,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
-  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/vendor/passkeys.js','/vendor/zxing.js'];
+  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/vendor/passkeys.js','/vendor/zxing.js'];
   check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);

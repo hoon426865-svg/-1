@@ -3,11 +3,14 @@ import { mountWorkRequests } from './work-requests.js';
 import { collectPages } from './worker-pages.js';
 import { renderPasskeyLogin, authorizePasskeyOperation, showEnrollmentInvite } from './passkeys.js';
 import { reportAuthFailure } from './auth-diagnostics.js';
+import { mountNavigation, resetNavigation, menuItems } from './navigation.js';
+import { captureDrafts, restoreDrafts, acceptForm, hasDrafts } from './drafts.js';
 
 const screen = document.querySelector('#screen');
 const account = document.querySelector('#account');
 let me = null, state = null, selectedDate = '', epoch = 0;
 let authMode = 'password';
+let requestPanels = new Map();
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const time = value => value ? esc(value.slice(0, 5)) : '—';
 const notice = message => { document.querySelector('#notice').textContent = message; };
@@ -16,6 +19,7 @@ const values = form => Object.fromEntries(new FormData(form));
 function clearSession(message = '') {
   epoch++;
   me = null; state = null; selectedDate = '';
+  requestPanels.clear();resetNavigation();
   account.replaceChildren();
   history.replaceState(null, '', '/login');
   renderLogin();
@@ -47,7 +51,12 @@ async function api(path, body, singlePage = false, options = {}) {
       // A password reset can invalidate permissions while this page is open.
       const current = await fetch('/api/me', { cache: 'no-store' });
       if (current.status === 401) clearSession('다시 로그인해 주세요.');
-      else if (current.ok) { me = await current.json(); if (me.mustChange) renderPassword(); }
+      else if (current.ok) {
+        const user=await current.json();
+        if (me && (me.id!==user.id || me.role!==user.role || me.employeeId!==user.employeeId)) {
+          clearSession();await load();
+        } else {me=user;if(me.mustChange)renderPassword();}
+      }
     }
     const error = Error(data.error || '요청에 실패했습니다.');
     error.status = response.status;
@@ -83,6 +92,7 @@ function renderLogin() {
 }
 function renderSetup() {
   me = null; state = null;
+  requestPanels.clear();resetNavigation();
   account.replaceChildren();
   history.replaceState(null, '', '/setup');
   screen.innerHTML = `<section class="card auth-card"><h1>최초 관리자 설정</h1><p>온워크를 관리할 첫 계정을 만드세요. 최초 한 번만 생성할 수 있으며, 직원 계정은 이후 관리자 화면에서 등록합니다.</p>
@@ -109,12 +119,14 @@ function renderAccount() {
   account.innerHTML = `<span>${esc(me.login)} · ${me.role === 'admin' ? '관리자' : '직원'}</span><button class="secondary" id="refresh">새로고침</button><button class="secondary" id="logout">로그아웃</button>`;
   document.querySelector('#refresh').onclick = () => load().catch(error => notice(error.message));
   document.querySelector('#logout').onclick = async () => {
+    if (hasDrafts(screen) && !confirm('작성 중인 내용이 있습니다. 내용을 버리고 로그아웃할까요?')) return;
     try { await api('/api/logout', {}); clearSession('로그아웃했습니다.'); }
     catch (error) { notice(error.message); }
   };
 }
 function renderPassword() {
   state = null;
+  requestPanels.clear();resetNavigation();
   renderAccount();
   screen.innerHTML = `<section class="card auth-card"><h1>임시 비밀번호 변경</h1><p>계속하려면 본인만 아는 12~128자의 새 비밀번호를 설정하세요.</p><form id="password-form">
     <label>현재 비밀번호<input name="currentPassword" type="password" autocomplete="current-password" required></label>
@@ -134,6 +146,7 @@ async function load({afterLogin=false} = {}) {
   if (requestEpoch !== epoch) return;
   if (location.origin !== setup.appOrigin) {
     me = null; state = null;
+    requestPanels.clear();resetNavigation();
     account.replaceChildren();
     screen.innerHTML = `<section class="card auth-card"><h1>앱 접속 주소 확인</h1><p>현재 미리보기 주소가 서버에 설정된 주소와 다릅니다. 아래 주소를 별도 브라우저 탭에서 열어 주세요.</p><a href="${esc(setup.appOrigin)}/login" target="_blank" rel="noopener noreferrer">${esc(setup.appOrigin)}</a></section>`;
     return;
@@ -142,6 +155,7 @@ async function load({afterLogin=false} = {}) {
   try { await api('/api/origin-check', {}); }
   catch (error) {
     me = null; state = null; account.replaceChildren();
+    requestPanels.clear();resetNavigation();
     screen.innerHTML = `<section class="card auth-card"><h1>접속 확인</h1><p role="alert">${esc(error.message)}</p><button class="primary" id="retry-origin">다시 확인</button></section>`;
     document.querySelector('#retry-origin').onclick = () => load().catch(failure => notice(failure.message));
     return;
@@ -159,6 +173,12 @@ async function load({afterLogin=false} = {}) {
     throw error;
   }
   if (requestEpoch !== epoch) return;
+  if (me && (me.id !== user.id || me.role !== user.role || me.employeeId !== user.employeeId)) {
+    // Another tab may have switched the shared login cookie. Never restore
+    // the previous account's panels or draft values into this account.
+    requestPanels.clear();screen.replaceChildren();selectedDate='';resetNavigation();
+    history.replaceState(null,'',location.pathname+'#home');
+  }
   me = user;
   renderAccount();
   if (me.mustChange) { renderPassword(); return; }
@@ -168,7 +188,7 @@ async function load({afterLogin=false} = {}) {
   if (requestEpoch !== epoch) return;
   state = snapshot;
   selectedDate ||= state.today;
-  history.replaceState(null, '', me.role === 'admin' ? '/admin' : '/employee');
+  history.replaceState(null, '', (me.role === 'admin' ? '/admin' : '/employee') + location.hash);
   try { render(); notice(''); }
   catch {
     throw Object.assign(Error('로그인은 완료됐지만 업무 화면을 표시하지 못했습니다. 상단 새로고침 버튼을 눌러주세요.'), { code: 'CLIENT_RUNTIME_ERROR', stage: 'screen-render' });
@@ -176,34 +196,55 @@ async function load({afterLogin=false} = {}) {
 }
 function render() {
   if (!me || !state) return;
+  const drafts = captureDrafts(screen);
   if (me.role === 'admin') renderAdmin(); else renderEmployee();
-  const requests = document.createElement('div');
-  screen.append(requests);
-  mountWorkRequests({root:requests,api,me,employees:state.employees,today:state.today});
+  if (!me || !state) return;
+  screen.insertAdjacentHTML('beforeend', `<div data-page="requests" hidden>${heading('근무 신청',me.role==='admin'?'직원의 신청을 검토하고 처리 이력을 확인하세요.':'내 근무 변경 신청과 처리 이력을 확인하세요.')}<div data-request-slot="requests"></div></div>${me.role==='admin'?`<div data-page="reports" hidden>${heading('통계·보고서','직원별 월간·연간 기록을 조회하세요.')}<div data-request-slot="report"></div></div>`:''}<div data-page="settings" hidden>${heading('설정','현재 로그인한 계정과 앱 정보')}<section class="card"><h2>내 계정</h2><dl class="account-details"><div><dt>계정</dt><dd>${esc(me.login)}</dd></div><div><dt>권한</dt><dd>${me.role==='admin'?'관리자':'직원'}</dd></div><div><dt>로그인 방식</dt><dd>${authMode==='passkey'?'패스키 · 기기 PIN 또는 생체인증':'비밀번호'}</dd></div><div><dt>시간 기준</dt><dd>한국 시간 (Asia/Seoul)</dd></div></dl><div class="employee-actions"><button type="button" class="secondary" id="settings-refresh">최신 자료 불러오기</button><button type="button" class="secondary" id="settings-logout">로그아웃</button></div></section></div>`);
+  for (const [mode,panel] of requestPanels) {
+    const slot=screen.querySelector(`[data-request-slot="${mode}"]`);
+    if (slot) {slot.append(panel.root);panel.refresh({employees:state.employees,today:state.today});}
+  }
+  restoreDrafts(screen,drafts);
+  document.querySelector('#settings-refresh').onclick=()=>document.querySelector('#refresh').click();
+  document.querySelector('#settings-logout').onclick=()=>document.querySelector('#logout').click();
+  mountNavigation(me,page=>{
+    notice('');
+    const mode=page==='requests'?'requests':page==='reports'?'report':null;
+    if (!mode || requestPanels.has(mode)) return;
+    const root=document.createElement('div');
+    screen.querySelector(`[data-request-slot="${mode}"]`).append(root);
+    const controller=mountWorkRequests({root,api,me,employees:state.employees,today:state.today,mode,onChange:()=>requestPanels.get('report')?.refresh()});
+    requestPanels.set(mode,{root,...controller});
+  });
 }
-async function save(path, body, message) {
+async function save(path, body, message, form) {
   await api(path, body);
+  acceptForm(form);
   await load();
   notice(message);
 }
 function stat(label, value) { return `<div class="stat"><span>${label}</span><strong>${value.toLocaleString('ko-KR')}</strong></div>`; }
 function attendanceLabel(record) { return !record ? '미출근' : !record.out ? '근무 중' : needsReview(record) ? '야근 검토' : '퇴근 완료'; }
+function heading(title,description) { return `<div class="page-heading"><div><h1 tabindex="-1">${title}</h1><p>${esc(description)}</p></div></div>`; }
+function home(person) {
+  const admin=me.role==='admin',today=state.attendance.filter(r=>r.date===state.today),sum=totals(state.production,state.today);
+  return `<div data-page="home" hidden>${heading('홈',`${person?person.name+' · ':''}${state.today} 오늘의 업무 현황`)}<section class="card"><h2>오늘의 현황</h2><div class="home-stats">${admin?stat('출근 인원',today.length):`<div class="stat"><span>내 출퇴근</span><strong class="status-value">${attendanceLabel(today[0])}</strong></div>`}${stat('양품',sum.good)}${stat('불량',sum.bad)}${admin?stat('야근 검토',today.filter(needsReview).length):`<div class="stat"><span>출근 시각</span><strong>${time(today[0]?.in)}</strong></div>`}</div></section><section class="card"><h2>자주 쓰는 기능</h2><div class="quick-links">${menuItems.filter(item=>['attendance','production','requests',...(admin?['employees','reports']:[])].includes(item.id)).map(item=>`<a href="#${item.id}"><strong>${item.label}</strong><span>${item.description|| (item.id==='employees'?'직원 정보와 계정 관리':'월간·연간 내역 조회')} →</span></a>`).join('')}</div></section></div>`;
+}
 function renderEmployee() {
   const person = state.employees.find(item => item.id === me.employeeId);
   if (!person) { clearSession('직원 정보를 확인할 수 없습니다.'); return; }
   const today = state.attendance.find(item => item.date === state.today);
   const open = state.attendance.find(item => !item.out);
   const sum = totals(state.production, state.today);
-  screen.innerHTML = `<div class="page-heading"><div><h1>내 출퇴근과 생산 기록</h1><p>${esc(person.name)} · ${esc(person.number)} · ${esc(person.team)} · ${esc(state.today)}</p></div></div>
-    <div class="employee-grid"><section class="card"><h2>오늘 출퇴근</h2><p>${attendanceLabel(today)}</p><div class="clock-pair"><div><span>출근</span><strong>${time(today?.in)}</strong></div><div><span>퇴근</span><strong>${time(today?.out)}</strong></div></div>
+  screen.innerHTML = `${home(person)}<div data-page="attendance" hidden>${heading('출퇴근',`${person.name} · ${person.number} · ${person.team}`)}<section class="card"><h2>오늘 출퇴근</h2><p>${attendanceLabel(today)}</p><div class="clock-pair"><div><span>출근</span><strong>${time(today?.in)}</strong></div><div><span>퇴근</span><strong>${time(today?.out)}</strong></div></div>
     ${open && open.date !== state.today ? `<p>${esc(open.date)}의 미퇴근 기록이 있습니다.</p>` : ''}
     <form id="attendance-form"><div class="button-pair"><button class="primary" name="action" value="in" ${today || open ? 'disabled' : ''}>출근하기</button><button class="secondary" name="action" value="out" ${open ? '' : 'disabled'}>퇴근하기</button></div><p role="alert" class="task-error"></p></form><p class="small">로그인한 본인의 기록을 서버 시각으로 저장합니다.</p></section>
-    <section class="card"><h2>작업 수량 기록</h2><div class="stats">${stat('오늘 양품', sum.good)}${stat('오늘 불량', sum.bad)}</div>
+    <section class="card"><h2>내 출퇴근 기록</h2>${state.attendance.slice().reverse().map(record => `<div class="history-row"><strong>${esc(record.date)}</strong><span>출근 ${time(record.in)} · 퇴근 ${record.outDate && record.outDate !== record.date ? esc(record.outDate) : ''} ${time(record.out)}</span><span>${attendanceLabel(record)}</span></div>`).join('') || '<p class="empty">기록이 없습니다.</p>'}</section>
+</div><div data-page="production" hidden>${heading('생산 관리','작업 수량을 입력하고 내 생산 기록을 확인하세요.')}    <section class="card"><h2>작업 수량 기록</h2><div class="stats">${stat('오늘 양품', sum.good)}${stat('오늘 불량', sum.bad)}</div>
     <form id="production-form"><label>작업<select name="taskId" required>${state.tasks.map(task => `<option value="${esc(task.id)}">${esc(task.name)}</option>`).join('')}</select></label>
     <div class="quantity-grid"><label>양품 수량<input name="good" type="number" min="0" max="999999" value="0" required></label><label>불량 수량<input name="bad" type="number" min="0" max="999999" value="0" required></label></div>
-    <p role="alert" class="task-error"></p><button class="primary" ${state.tasks.length ? '' : 'disabled'}>수량 기록하기</button></form></section></div>
-    <section class="card"><h2>내 출퇴근 기록</h2>${state.attendance.slice().reverse().map(record => `<div class="history-row"><strong>${esc(record.date)}</strong><span>출근 ${time(record.in)} · 퇴근 ${record.outDate && record.outDate !== record.date ? esc(record.outDate) : ''} ${time(record.out)}</span><span>${attendanceLabel(record)}</span></div>`).join('') || '<p class="empty">기록이 없습니다.</p>'}</section>
-    <section class="card"><h2>내 생산 기록</h2>${state.production.slice().reverse().map(record => `<div class="history-row"><div><strong>${esc(record.task)}</strong><p>${esc(record.date)} · ${time(record.time)}</p></div><span>양품 ${record.good} · 불량 ${record.bad}</span></div>`).join('') || '<p class="empty">기록이 없습니다.</p>'}</section>`;
+    <p role="alert" class="task-error"></p><button class="primary" ${state.tasks.length ? '' : 'disabled'}>수량 기록하기</button></form></section>
+    <section class="card"><h2>내 생산 기록</h2>${state.production.slice().reverse().map(record => `<div class="history-row"><div><strong>${esc(record.task)}</strong><p>${esc(record.date)} · ${time(record.time)}</p></div><span>양품 ${record.good} · 불량 ${record.bad}</span></div>`).join('') || '<p class="empty">기록이 없습니다.</p>'}</section></div>`;
   const form = document.querySelector('#attendance-form');
   form.onsubmit = async event => {
     event.preventDefault();
@@ -216,64 +257,71 @@ function renderEmployee() {
     finally { buttons.forEach((button, i) => { button.disabled = disabled[i]; }); }
   };
   let requestKey = crypto.randomUUID();
-  bindForm('#production-form', async body => {
+  bindForm('#production-form', async (body,form) => {
     await api('/api/production', { ...body, requestKey });
     requestKey = crypto.randomUUID();
+    acceptForm(form);
     await load(); notice('생산량을 저장했습니다.');
   });
 }
 function renderAdmin() {
   const records = state.attendance.filter(record => record.date === selectedDate);
   const sum = totals(state.production, selectedDate);
-  screen.innerHTML = `<div class="page-heading"><div><h1>관리자 · 전체 현황</h1><p>직원 관리와 날짜별 집계</p></div><label>조회 날짜<input id="admin-date" type="date" value="${esc(selectedDate)}"></label></div>
-    <div class="admin-stats card">${stat('출근 인원', records.length)}${stat('양품 합계', sum.good)}${stat('불량 합계', sum.bad)}${stat('야근 검토', records.filter(needsReview).length)}</div>
-    <section class="card"><h2>직원별 출퇴근·생산량</h2><div class="table-wrap"><table><thead><tr><th>직원</th><th>출근</th><th>퇴근</th><th>양품</th><th>불량</th></tr></thead><tbody>${state.employees.map(person => {
-      const record = records.find(item => item.employeeId === person.id), total = totals(state.production, selectedDate, person.id);
-      return `<tr><td>${esc(person.name)}<span class="team">${esc(person.number)} · ${esc(person.team)}${person.active ? '' : ' · 퇴사'}</span></td><td>${time(record?.in)}</td><td>${record?.outDate && record.outDate !== record.date ? esc(record.outDate) : ''} ${time(record?.out)}</td><td>${total.good}</td><td>${total.bad}</td></tr>`;
-    }).join('')}</tbody></table></div></section>
+  const dateField = `<label class="date-filter">조회 날짜<input class="admin-date" type="date" value="${esc(selectedDate)}"></label>`;
+  screen.innerHTML = `${home()}<div data-page="attendance" hidden>${heading('출퇴근','날짜별 직원 출퇴근 기록')}${dateField}
+    <section class="card"><h2>직원별 출퇴근</h2><div class="table-wrap"><table><thead><tr><th>직원</th><th>출근</th><th>퇴근</th><th>상태</th></tr></thead><tbody>${state.employees.map(person => {
+      const record=records.find(item=>item.employeeId===person.id);
+      return `<tr><td>${esc(person.name)}<span class="team">${esc(person.number)} · ${esc(person.team)}${person.active?'':' · 퇴사'}</span></td><td>${time(record?.in)}</td><td>${record?.outDate&&record.outDate!==record.date?esc(record.outDate):''} ${time(record?.out)}</td><td>${attendanceLabel(record)}</td></tr>`;
+    }).join('')||'<tr><td colspan="4">등록된 직원이 없습니다.</td></tr>'}</tbody></table></div></section></div>
+    <div data-page="employees" hidden>${heading('직원 관리','직원 정보와 계정 관리')}
     <section class="card"><h2>직원 관리</h2><p>${authMode === 'passkey' ? '직원에게 일회용 등록권을 전달하면 본인의 기기에 패스키를 등록할 수 있습니다. 계정 발급과 복구에는 관리자 패스키 재인증이 필요합니다.' : '사번이 로그인 계정이 됩니다. 임시 비밀번호는 첫 로그인 후 변경해야 합니다.'}</p>
     <form id="add-employee-form" class="employee-form">${employeeFields()}${authMode === 'passkey' ? '' : '<label>임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>'}${reasonField()}<button class="primary">직원 추가</button><p role="alert" class="task-error"></p></form>
-    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form><form class="employee-form reset-password-form" data-id="${esc(person.id)}">${authMode === 'passkey' ? `<label><input name="identityConfirmed" type="checkbox" required> ${esc(person.number)} 직원의 본인을 직접 확인했습니다.</label>${reasonField()}<button class="secondary">분실 패스키 복구</button><p class="small">기존 패스키와 모든 세션을 폐기하고 일회용 등록권을 발급합니다.</p>` : `<label>${esc(person.number)} 새 임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>임시 비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="secondary">비밀번호 재설정</button><p class="small">이 직원의 모든 로그인 세션이 종료되며, 다음 로그인 시 비밀번호를 변경해야 합니다.</p>`}<p role="alert" class="task-error"></p></form>`).join('')}</div></section>
+    <div class="employee-list">${state.employees.map(person => `<form class="employee-form edit-employee-form" data-id="${esc(person.id)}" data-version="${person.version}"><div class="employee-status"><strong>${esc(person.name)} · ${person.active ? '재직' : '퇴사'}</strong></div>${employeeFields(person)}${reasonField()}<div class="employee-actions"><button class="secondary">정보 수정</button><button class="secondary toggle-employee" type="button">${person.active ? '퇴사 처리' : '다시 활성화'}</button></div><p role="alert" class="task-error"></p></form><form class="employee-form reset-password-form" data-id="${esc(person.id)}" data-version="${person.version}">${authMode === 'passkey' ? `<label><input name="identityConfirmed" type="checkbox" required> ${esc(person.number)} 직원의 본인을 직접 확인했습니다.</label>${reasonField()}<button class="secondary">분실 패스키 복구</button><p class="small">기존 패스키와 모든 세션을 폐기하고 일회용 등록권을 발급합니다.</p>` : `<label>${esc(person.number)} 새 임시 비밀번호<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label><label>임시 비밀번호 확인<input name="confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>${reasonField()}<button class="secondary">비밀번호 재설정</button><p class="small">이 직원의 모든 로그인 세션이 종료되며, 다음 로그인 시 비밀번호를 변경해야 합니다.</p>`}<p role="alert" class="task-error"></p></form>`).join('')}</div></section>
+    </div><div data-page="production" hidden>${heading('생산 관리','직원별 생산량과 작업 종류 관리')}${dateField}
+    <div class="stats">${stat('양품 합계',sum.good)}${stat('불량 합계',sum.bad)}</div>
+    <section class="card"><h2>직원별 생산량</h2><div class="table-wrap"><table><thead><tr><th>직원</th><th>양품</th><th>불량</th></tr></thead><tbody>${state.employees.map(person=>{const sum=totals(state.production,selectedDate,person.id);return `<tr><td>${esc(person.name)}<span class="team">${esc(person.number)} · ${esc(person.team)}</span></td><td>${sum.good}</td><td>${sum.bad}</td></tr>`;}).join('')||'<tr><td colspan="3">등록된 직원이 없습니다.</td></tr>'}</tbody></table></div></section>
     <section class="card"><h2>작업 종류 관리</h2><form id="add-task-form" class="task-form"><label>새 작업 이름<input name="name" maxlength="40" required></label>${reasonField()}<button class="primary">작업 추가</button><p role="alert" class="task-error"></p></form>
-    ${state.tasks.map(task => `<form class="task-form edit-task-form" data-id="${esc(task.id)}"><label>작업 이름<input name="name" value="${esc(task.name)}" maxlength="40" required></label>${reasonField()}<button class="secondary">이름 수정</button><p role="alert" class="task-error"></p></form>`).join('')}</section>`;
-  document.querySelector('#admin-date').onchange = event => { if (event.target.value) { selectedDate = event.target.value; render(); } };
-  bindForm('#add-employee-form', async body => {
-    if (authMode !== 'passkey') return save('/api/admin/employee', body, '직원 계정을 추가했습니다.');
+    ${state.tasks.map(task => `<form class="task-form edit-task-form" data-id="${esc(task.id)}" data-version="${task.version}"><label>작업 이름<input name="name" value="${esc(task.name)}" maxlength="40" required></label>${reasonField()}<button class="secondary">이름 수정</button><p role="alert" class="task-error"></p></form>`).join('')}</section></div>`;
+  screen.querySelectorAll('.admin-date').forEach(input=>input.onchange=event=>{if(event.target.value){selectedDate=event.target.value;render();}});
+  bindForm('#add-employee-form', async (body,form) => {
+    if (authMode !== 'passkey') return save('/api/admin/employee', body, '직원 계정을 추가했습니다.',form);
     const authorization = await authorizePasskeyOperation(api, 'create', body);
     const result = await api('/api/admin/employee', { ...body, authorization });
-    await load(); showEnrollmentInvite(result);
+    acceptForm(form); await load(); showEnrollmentInvite(result);
   });
   document.querySelectorAll('.edit-employee-form').forEach((form, i) => {
     const person = state.employees[i];
-    bindForm(`.edit-employee-form[data-id="${person.id}"]`, body => save('/api/admin/employee', { ...body, id: person.id, version: person.version }, '직원 정보를 수정했습니다.'));
+    bindForm(`.edit-employee-form[data-id="${person.id}"]`, (body,form) => save('/api/admin/employee', { ...body, id: person.id, version:Number(form.dataset.version) }, '직원 정보를 수정했습니다.',form));
     form.querySelector('.toggle-employee').onclick = async event => {
       if (!form.reportValidity()) return;
       event.target.disabled = true;
-      try { await save('/api/admin/employee-status', { id: person.id, version: person.version, active: !person.active, reason: values(form).reason }, '재직 상태를 변경했습니다.'); }
+      try { await save('/api/admin/employee-status', { id: person.id, version:Number(form.dataset.version), active: !person.active, reason: values(form).reason }, '재직 상태를 변경했습니다.',form); }
       catch (error) { if (form.isConnected) form.querySelector('[role="alert"]').textContent = error.message; }
       finally { event.target.disabled = false; }
     };
   });
   state.employees.forEach(person => bindForm(`.reset-password-form[data-id="${person.id}"]`, async (body, form) => {
     if (authMode === 'passkey') {
-      const details = { id: person.id, version: person.version, reason: body.reason, identityConfirmed: body.identityConfirmed === 'on' };
+      const details = { id: person.id, version:Number(form.dataset.version), reason: body.reason, identityConfirmed: body.identityConfirmed === 'on' };
       const authorization = await authorizePasskeyOperation(api, 'recover', details);
       const result = await api('/api/admin/passkeys/recover', { ...details, authorization });
-      form.reset(); await load(); showEnrollmentInvite(result); return;
+      form.reset(); acceptForm(form); await load(); showEnrollmentInvite(result); return;
     }
     if (body.password !== body.confirmation) throw Error('임시 비밀번호 확인이 일치하지 않습니다.');
     await api('/api/admin/reset-password', { id: person.id, password: body.password, reason: body.reason });
-    form.reset();
+    form.reset(); acceptForm(form);
     await load();
     notice('임시 비밀번호를 재설정했습니다. 직원에게 안전하게 전달하세요.');
   }));
-  bindForm('#add-task-form', body => save('/api/admin/task', body, '작업을 추가했습니다.'));
-  state.tasks.forEach(task => bindForm(`.edit-task-form[data-id="${task.id}"]`, body => save('/api/admin/task', { ...body, id: task.id, version: task.version }, '작업 이름을 수정했습니다.')));
+  bindForm('#add-task-form', (body,form) => save('/api/admin/task', body, '작업을 추가했습니다.',form));
+  state.tasks.forEach(task => bindForm(`.edit-task-form[data-id="${task.id}"]`, (body,form) => save('/api/admin/task', { ...body, id: task.id, version:Number(form.dataset.version) }, '작업 이름을 수정했습니다.',form)));
 }
 function employeeFields(person = {}) {
   return `<label>이름<input name="name" value="${esc(person.name)}" maxlength="40" required></label><label>사번<input name="number" value="${esc(person.number)}" pattern="[A-Za-z0-9-]{1,30}" maxlength="30" required></label><label>소속 팀<input name="team" value="${esc(person.team)}" maxlength="40" required></label>`;
 }
 function reasonField() { return '<label>변경 사유<input name="reason" maxlength="500" required></label>'; }
+document.querySelector('.brand').addEventListener('click',event=>{if(me&&state){event.preventDefault();location.hash='home';}});
+window.addEventListener('beforeunload',event=>{if(me&&state&&hasDrafts(screen)){event.preventDefault();event.returnValue='';}});
 window.addEventListener('pageshow', event => { if (event.persisted) { state = null; screen.replaceChildren(); load().catch(error => notice(error.message)); } });
 window.addEventListener('error', () => reportAuthFailure('client-runtime', {code:'CLIENT_RUNTIME_ERROR'}));
 window.addEventListener('unhandledrejection', () => reportAuthFailure('client-runtime', {code:'CLIENT_RUNTIME_ERROR'}));
