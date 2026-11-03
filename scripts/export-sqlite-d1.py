@@ -6,6 +6,7 @@ Run during cutover after disabling writes in the old application.
 import argparse, hashlib, json, os, pathlib, sqlite3
 
 PERSISTENT = ['schema_version','employees','tasks','users','attendance','production','overtime','audit','initial_setup','work_requests','work_request_history']
+ATTENDANCE = ['attendance_policies','attendance_originals','attendance_adjustments','attendance_finalizations']
 VOLATILE = ['sessions','qr_challenges','qr_uses','deletion_confirmations','login_limits']
 
 def table_manifest(db, table):
@@ -16,7 +17,7 @@ def table_manifest(db, table):
     payload = json.dumps([columns,rows],ensure_ascii=False,separators=(',',':')).encode()
     return {'rows':len(rows),'sha256':hashlib.sha256(payload).hexdigest()}
 
-def manifest(db):
+def manifest(db, selected=None):
     if db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok' or list(db.execute('PRAGMA foreign_key_check')):
         raise ValueError('SQLite integrity/foreign key validation failed')
     if db.execute('SELECT MAX(version) FROM schema_version').fetchone()[0] != 1:
@@ -25,7 +26,8 @@ def manifest(db):
         import re
         if not re.fullmatch('[a-f0-9]{32}:[a-f0-9]{128}',stored):
             raise ValueError('Unsupported account hash; do not reset or weaken passwords')
-    return {table:table_manifest(db,table) for table in PERSISTENT}
+    selected = selected or PERSISTENT + [t for t in ATTENDANCE if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(t,)).fetchone()]
+    return {table:table_manifest(db,table) for table in selected}
 
 def export(source, destination):
     source=pathlib.Path(source).resolve(strict=True)
@@ -48,12 +50,19 @@ def export(source, destination):
         report={'format':1,'source_sha256':digest,'tables':tables,'excluded_ephemeral_tables':VOLATILE,'site_ids':site_ids}
         (destination/'manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
         # The guard refuses nonempty destinations; never INSERT OR REPLACE.
-        guards=' AND '.join('(SELECT count(*)=0 FROM "'+t+'")' for t in PERSISTENT if t!='schema_version')
+        selected=list(tables)
+        # Originals are imported before attendance: the capture trigger then
+        # leaves the preserved raw punches intact. Policies are seeded by D1.
+        for t in ['attendance_policies','attendance_originals']:
+            if t in selected:
+                selected.remove(t)
+                selected.insert(selected.index('attendance'),t)
+        guards=' AND '.join('(SELECT count(*)=0 FROM "'+t+'")' for t in selected if t not in ['schema_version','attendance_policies'])
         lines=['-- Private account/employee data: never commit/upload as a CI artifact.',
                'CREATE TABLE migration_empty_guard(ok INTEGER NOT NULL CHECK(ok=1));',
                'INSERT INTO migration_empty_guard SELECT '+guards+';',
                "INSERT INTO worker_import(id,source_digest,verified) VALUES(1,'"+digest+"',0);"]
-        for table in PERSISTENT:
+        for table in selected:
             if table=='schema_version': continue
             columns=[r[1] for r in copy.execute('PRAGMA table_info("'+table+'")')]
             for row in copy.execute('SELECT * FROM "'+table+'"'):
@@ -65,7 +74,8 @@ def export(source, destination):
                     else:
                         if '\x00' in value: raise ValueError('NUL text requires a separate import encoding')
                         literals.append("'"+value.replace("'","''")+"'")
-                lines.append('INSERT INTO "'+table+'"('+','.join('"'+c+'"' for c in columns)+') VALUES('+','.join(literals)+');')
+                verb='INSERT OR IGNORE' if table=='attendance_policies' else 'INSERT'
+                lines.append(verb+' INTO "'+table+'"('+','.join('"'+c+'"' for c in columns)+') VALUES('+','.join(literals)+');')
         lines.append('DROP TABLE migration_empty_guard;')
         (destination/'import.sql').write_text('\n'.join(lines)+'\n')
         os.chmod(snapshot,0o600)

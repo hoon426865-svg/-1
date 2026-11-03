@@ -32,13 +32,15 @@ test('SQLite → D1: 원본 보존·WAL 최신 기록·모든 계정/업무/이�
     await f.db.prepare('DELETE FROM sessions').run();
     await f.db.prepare('DELETE FROM login_limits').run();
     const schema=(await f.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 ELSE 2 END,rowid").all()).results;
-    const sql=schema.map(r=>r.sql+';');
+    // A portable dump restores data before installing capture/audit triggers.
+    const sql=schema.filter(r=>r.type!=='trigger').map(r=>r.sql+';');
     for(const table of schema.filter(r=>r.type==='table')){
       for(const row of (await f.db.prepare(`SELECT * FROM "${table.name}"`).all()).results){
         const quote=value=>value===null?'NULL':typeof value==='number'?String(value):"'"+value.replaceAll("'","''")+"'";
         sql.push(`INSERT INTO "${table.name}" (${Object.keys(row).map(c=>'"'+c+'"').join(',')}) VALUES(${Object.values(row).map(quote).join(',')});`);
       }
     }
+    sql.push(...schema.filter(r=>r.type==='trigger').map(r=>r.sql+';'));
     const dump=join(directory,'d1-export.sql'),verified=join(directory,'verified.sql');writeFileSync(dump,sql.join('\n')+'\n');
     execFileSync('python3',['scripts/verify-d1-import.py','--manifest',join(bundle,'manifest.json'),'--d1-export',dump,'--out',verified]);
     assert.match(readFileSync(verified,'utf8'),/verified=1/);

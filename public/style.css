@@ -59,3 +59,8 @@ input[type=checkbox]{display:inline-block;width:auto;min-height:auto;margin:0 8p
   .card{padding:22px 18px}.account-details>div{grid-template-columns:90px 1fr;gap:12px}
   .history-row{flex-wrap:wrap}.date-filter{max-width:none}.table-wrap table{min-width:440px}
 }
+
+/* Attendance columns stay legible; narrow screens scroll the table itself. */
+#attendance-report-result table { min-width: 1200px; }
+#attendance-report-result th, #attendance-report-result td { white-space: nowrap; }
+#attendance-report-result td .small { max-width: 230px; white-space: normal; }

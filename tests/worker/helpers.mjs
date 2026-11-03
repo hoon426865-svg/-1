@@ -8,7 +8,7 @@ import {execFileSync} from 'node:child_process';
 export const origin='https://onwork-preview.test.workers.dev';
 globalThis.location={origin};
 
-export async function fixture({production=false,empty=false,passkey=false,publicKey=''}={}){
+export async function fixture({production=false,empty=false,passkey=false,publicKey='',attendanceMigration=true}={}){
   const password=randomUUID(),hash=hashPassword(password);
   const mf=new Miniflare(convertV4MiniflareOptions({name:'onwork-test',modules:true,scriptPath:resolve('dist/worker/index.js'),compatibilityDate:'2026-09-30',d1Databases:{DB:'test-only'},bindings:{APP_ORIGIN:origin,SITE_ID:'site-1',ENVIRONMENT:production?'production':'preview',AUTH_MODE:passkey?'passkey':'legacy',ENROLLMENT_PUBLIC_KEY:publicKey,MAINTENANCE_MODE:'0'},serviceBindings:{ASSETS:async request=>{
     const path=new URL(request.url).pathname;
@@ -16,7 +16,7 @@ export async function fixture({production=false,empty=false,passkey=false,public
   }}}));
   const db=await mf.getD1Database('DB');
   try {
-  for(const name of ['0001_existing_schema.sql','0002_workers.sql','0003_passkeys.sql','0004_passkey_administration.sql'])await applySql(db,'migrations/'+name);
+  for(const name of ['0001_existing_schema.sql','0002_workers.sql','0003_passkeys.sql','0004_passkey_administration.sql',...(attendanceMigration?['0005_attendance_reports.sql']:[])])await applySql(db,'migrations/'+name);
   if(!empty){
     await db.batch([
       db.prepare("INSERT INTO users(id,login,password_hash,role,must_change) VALUES('admin','ADMIN',?,'admin',0)").bind(hash),

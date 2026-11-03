@@ -4,6 +4,7 @@ import {koreaNow,needsReview,validateQuantity} from '../public/domain.js';
 import {saveRequest,decideRequest,listRequests,requestHistory,reportPeriod} from './work-requests.mjs';
 import {passkeyRoute} from './passkeys.mjs';
 import {adminOptions,provision} from './passkey-admin.mjs';
+import {attendanceReport,adjustAttendance,finalizeAttendance,reportCsvResponse} from './attendance-reports.mjs';
 
 const uuid=()=>crypto.randomUUID();
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8',...headers}});
@@ -150,6 +151,12 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
       return finish({ok:true},200,{'Set-Cookie':cookie('',0)});
     }
     check(!user.must_change,403,'먼저 임시 비밀번호를 변경하세요.');
+    if(['/api/admin/attendance-report','/api/admin/attendance-report/export'].includes(path)&&method==='GET'){
+      const report=await attendanceReport(db,user,url.searchParams);await consistent(db,tx.revision);
+      return path.endsWith('/export')?reportCsvResponse(report,tx.revision,!url.searchParams.get('after')):json({...report,revision:tx.revision});
+    }
+    if(path==='/api/admin/attendance-report/adjust'&&method==='POST')return finish(await adjustAttendance(db,tx,user,body,stamp));
+    if(path==='/api/admin/attendance-report/finalize'&&method==='POST')return finish(await finalizeAttendance(db,tx,user,body,stamp));
     if(path==='/api/admin/passkeys/authorize/options'&&method==='POST'){
       check(passkeyMode,404,'패스키 인증이 필요합니다.');return finish(await adminOptions(body,user,env,db,tx,now));
     }
@@ -199,7 +206,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
       if(body.action==='in'){
         check(!open,409,'진행 중인 출근 기록이 있습니다.');check(!await one(db,'SELECT id FROM attendance WHERE employee_id=? AND date=?',id,today),409,'오늘 출근 기록이 이미 있습니다.');
         after={id:uuid(),employee_id:id,date:today,in_at:stamp,out_at:null,version:1};tx.add('INSERT INTO attendance(id,employee_id,date,in_at) VALUES(?,?,?,?)',after.id,id,today,stamp);
-      }else{check(open,409,'출근 기록이 없습니다.');check(stamp>=open.in_at,409,'서버 시각을 확인하세요.');after={...open,out_at:stamp,version:open.version+1};tx.add('UPDATE attendance SET out_at=?,version=version+1 WHERE id=?',stamp,open.id);}
+      }else{check(open,409,'출근 기록이 없습니다.');check(stamp>=open.in_at,409,'서버 시각을 확인하세요.');after={...open,out_at:stamp,version:open.version+1};tx.add('UPDATE attendance SET out_at=?,version=version+1 WHERE id=?',stamp,open.id);tx.add('UPDATE attendance_originals SET out_at=? WHERE attendance_id=? AND out_at IS NULL',stamp,open.id);}
       audit(tx,user,'attendance_'+body.action,after.id,'본인 출퇴근 기록',open||null,after,stamp);return finish({record:attendanceView(after)});
     }
     if(path==='/api/production'&&method==='POST'){
@@ -213,6 +220,9 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
     if(path==='/api/admin/attendance'&&method==='POST'){
       const reason=text(body.reason,500),inAt=instant(body.inAt,now),outAt=body.outAt?instant(body.outAt,now):null;check(!outAt||outAt>=inAt,400,'퇴근은 출근 이후여야 합니다.');
       const before=await row(db,'attendance',body.id);version(before,body);const date=koreaNow(new Date(inAt)).date;
+      check(!outAt||Date.parse(outAt)-Date.parse(inAt)<=7*86400000,400,'7일을 넘는 기록은 날짜와 시각을 확인하세요.');
+      const adjustment=await one(db,'SELECT * FROM attendance_adjustments WHERE attendance_id=? ORDER BY version DESC LIMIT 1',before.id);
+      if(adjustment?.start_at)check(Date.parse(adjustment.start_at)>=Date.parse(inAt)&&(!outAt||Date.parse(adjustment.start_at)<=Date.parse(outAt)),409,'먼저 집계 시작 예외를 기본값으로 되돌린 뒤 출퇴근을 정정하세요.');
       check(!await one(db,'SELECT id FROM attendance WHERE employee_id=? AND date=? AND id!=?',before.employee_id,date,before.id),409,'해당 날짜 출근 기록이 이미 있습니다.');
       check(outAt||!await one(db,'SELECT id FROM attendance WHERE employee_id=? AND out_at IS NULL AND id!=?',before.employee_id,before.id),409,'다른 미퇴근 기록이 있습니다.');
       tx.add('UPDATE attendance SET date=?,in_at=?,out_at=?,version=version+1 WHERE id=?',date,inAt,outAt,before.id);
@@ -237,7 +247,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
-  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/vendor/passkeys.js','/vendor/zxing.js'];
+  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/attendance-reports.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/vendor/passkeys.js','/vendor/zxing.js'];
   check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);

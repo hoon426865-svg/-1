@@ -13,7 +13,7 @@ def verify(expected_path, export_path, output):
     with tempfile.TemporaryDirectory(prefix='onwork-d1-verify-') as directory:
         with closing(sqlite3.connect(str(pathlib.Path(directory)/'verify.sqlite'))) as db:
             db.executescript(pathlib.Path(export_path).read_text())
-            actual=module.manifest(db)
+            actual=module.manifest(db,list(expected['tables']))
             if actual!=expected['tables']:
                 raise ValueError('D1 rows/content differ from source; keep maintenance mode and preserve both databases')
             for table in module.VOLATILE:
@@ -30,7 +30,7 @@ def verify(expected_path, export_path, output):
             if db.execute('SELECT count(*) FROM worker_guard').fetchone()[0]:
                 raise ValueError('Transaction guard is not empty')
             required=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'revision_%'")]
-            if len(required) not in (48,54,61):
+            if len(required) not in (48,54,61,66):
                 raise ValueError('Expected revision triggers missing')
     os.umask(0o077)
     with open(output,'x') as f:
