@@ -109,9 +109,10 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
       await nav(admin,'reports');
       await admin.locator('#work-report [name=employeeId]').selectOption('e1');
       await admin.locator('#work-report button').click();
-      await admin.locator('#report-result table tbody tr').waitFor();
-      const row=await admin.locator('#report-result table tbody tr').innerText();assert.match(row,/7\s*\/\s*0/);assert.match(row,/1일/);
-      await admin.locator('#report-result details summary').click();
+      await admin.locator('[data-request-report] > summary').click();
+      await admin.locator('#report-result [data-request-summary] tbody tr').waitFor();
+      const row=await admin.locator('#report-result [data-request-summary] tbody tr').innerText();assert.match(row,/7\s*\/\s*0/);assert.match(row,/1일/);
+      await admin.locator('#report-result [data-request-report] details summary').click();
       await admin.locator('#report-result [data-history]').click();
       await admin.locator('[data-page=reports] [data-work-history] h3').waitFor();
       assert.equal(await admin.locator('[data-page=requests]').isVisible(),false);
@@ -121,12 +122,12 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
       await decision.locator('[name=comment]').fill('재검토 검증');await decision.locator('button').click();
       await decision.locator('[name=action] option[value=approved]').waitFor({state:'attached'});
       await nav(admin,'reports');
-      await admin.waitForFunction(()=>document.querySelector('#report-result table tbody tr')?.textContent.includes('0일'));
+      await admin.waitForFunction(()=>document.querySelector('#report-result [data-request-summary] tbody tr')?.textContent.includes('0일'));
       await nav(admin,'requests');
       await decision.locator('[name=comment]').fill('재승인 검증');await decision.locator('button').click();
       await decision.locator('[name=action] option[value=reopen]').waitFor({state:'attached'});
       await nav(admin,'reports');
-      await admin.waitForFunction(()=>document.querySelector('#report-result table tbody tr')?.textContent.includes('1일'));
+      await admin.waitForFunction(()=>document.querySelector('#report-result [data-request-summary] tbody tr')?.textContent.includes('1일'));
     });
 
     await t.test('새로고침 후 오래된 편집 버전의 덮어쓰기 거부',async()=>{

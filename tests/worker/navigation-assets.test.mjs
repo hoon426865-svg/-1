@@ -6,7 +6,7 @@ test('패스키 로그인 전에 화면 모듈을 제공하고 보호된 API 권
   const f=await fixture({passkey:true});
   try {
     const guest=f.client();
-    for(const path of ['/navigation.js','/drafts.js']) {
+    for(const path of ['/navigation.js','/drafts.js','/attendance-report.js','/attendance-view.js']) {
       const response=await guest.call(path);
       assert.equal(response.status,200);
       assert.match(response.headers.get('content-type'),/javascript/);

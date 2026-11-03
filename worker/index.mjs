@@ -2,6 +2,7 @@ import {settings,token,digest,hashPassword,verifyPassword,dummyHash} from './sec
 import {check,one,all,begin,consistent,audit,boundedDatabase,statement} from './d1.mjs';
 import {koreaNow,needsReview,validateQuantity} from '../public/domain.js';
 import {saveRequest,decideRequest,listRequests,requestHistory,reportPeriod} from './work-requests.mjs';
+import {nextDate} from '../public/attendance-report.js';
 import {passkeyRoute} from './passkeys.mjs';
 import {adminOptions,provision} from './passkey-admin.mjs';
 import {attendanceReport,adjustAttendance,finalizeAttendance,reportCsvResponse} from './attendance-reports.mjs';
@@ -29,7 +30,7 @@ async function dataPages(db,user,params,report=false){
   const period=report?reportPeriod(params):null;
   if(period)Object.assign(result,period);
   const definitions={employees:['id',user.role==='employee'?'id=?':params.get('employeeId')&&report?'id=?':'',user.role==='employee'?[user.employee_id]:params.get('employeeId')&&report?[params.get('employeeId')]:[]],tasks:['id','',[]],attendance:['id','',[]],production:['id','',[]],overtime:['id','',[]],work_requests:['id','',[]]};
-  const tables=report?['employees','attendance','production','work_requests']:['employees','tasks','attendance','production','overtime'];
+  const tables=report?['employees','attendance','production','work_requests','overtime']:['employees','tasks','attendance','production','overtime'];
   const queries=[],selected=[];
   for(const table of tables){
     if(cursor[table]==='DONE'){result[table==='work_requests'?'requests':table]=[];next[table]='DONE';continue;}
@@ -37,8 +38,9 @@ async function dataPages(db,user,params,report=false){
     if(['attendance','production','work_requests'].includes(table)){
       const id=user.role==='employee'?user.employee_id:report?params.get('employeeId'):null;
       if(id){where.push('employee_id=?');args.push(id);}
-      if(period){where.push(table==='work_requests'?'end_date>=? AND start_date<=?':'date BETWEEN ? AND ?');args.push(period.from,period.to);}
+      if(period){where.push(table==='work_requests'?'end_date>=? AND start_date<=?':'date BETWEEN ? AND ?');args.push(period.from,table==='work_requests'?nextDate(period.to,2):period.to);}
     }
+    if(table==='overtime'&&report){where.push(`attendance_id IN(SELECT id FROM attendance WHERE date BETWEEN ? AND ?${params.get('employeeId')?' AND employee_id=?':''})`);args.push(period.from,period.to,...(params.get('employeeId')?[params.get('employeeId')]:[]));}
     if(table==='overtime'&&user.role==='employee'){where.push('attendance_id IN(SELECT id FROM attendance WHERE employee_id=?)');args.push(user.employee_id);}
     if(cursor[table]){where.push('id>?');args.push(cursor[table]);}
     queries.push(statement(db,`SELECT * FROM ${table} ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY id LIMIT 201`,args));selected.push(table);
@@ -247,7 +249,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
-  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/attendance-reports.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/vendor/passkeys.js','/vendor/zxing.js'];
+  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
   check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);

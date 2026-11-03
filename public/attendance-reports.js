@@ -1,6 +1,7 @@
+import {localStamp} from './attendance-report.js';
 import {captureDrafts,restoreDrafts,acceptForm,rememberForms,hasDrafts} from './drafts.js';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const stamp=value=>value?new Date(new Date(value).getTime()+32400000).toISOString().slice(0,19).replace('T',' '):'—';
+const stamp=value=>localStamp(value)||'—';
 const localInput=value=>value?stamp(value).replace(' ','T'):'';
 const isoInput=value=>(value.length===16?value+':00':value)+'+09:00';
 const minutes=value=>value===null?'확인 필요':Number(value.toFixed(2)).toLocaleString('ko-KR')+'분';

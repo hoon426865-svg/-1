@@ -64,3 +64,5 @@ input[type=checkbox]{display:inline-block;width:auto;min-height:auto;margin:0 8p
 #attendance-report-result table { min-width: 1200px; }
 #attendance-report-result th, #attendance-report-result td { white-space: nowrap; }
 #attendance-report-result td .small { max-width: 230px; white-space: normal; }
+/* Keep attendance exports readable on narrow screens without page overflow. */
+[data-attendance-report] table{min-width:1120px}[data-attendance-report] th,[data-attendance-report] td{vertical-align:top}[data-attendance-report] th{white-space:nowrap}[data-attendance-summary] td:nth-child(n+2){min-width:105px}[data-attendance-person] td:nth-child(2),[data-attendance-person] td:nth-child(3){min-width:165px}[data-attendance-person] td:last-child{min-width:210px}.attendance-rules{margin:12px 0 18px}.attendance-rules summary{cursor:pointer;color:#315c50;font-weight:650}.attendance-scroll-hint{margin-bottom:0}
