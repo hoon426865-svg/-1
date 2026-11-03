@@ -50,7 +50,11 @@ python3 scripts/verify-attendance-migration.py \
 
 기존 마이그레이션 0001~0004 적용을 확인한 뒤 0005만 적용하고 같은 preview Worker에 배포합니다. 코드를 되돌릴 때는 추가 테이블을 삭제하거나 DB를 과거 백업으로 덮어쓰지 않습니다. 배포 후 출퇴근이 들어올 수 있으므로 DB 전체 복구는 별도 점검·자료 대조가 필요한 작업입니다. [Cloudflare D1 백업·복원 문서](https://developers.cloudflare.com/d1/best-practices/import-export-data/).
 
-현재 원격 상태 조회에서 앱 health HTTP 200과 유료 Workers/D1 구독 없음이 확인되었습니다. 최종 커밋·배포 결과는 작업 완료 후 아래에 기록합니다.
+배포 완료: 2026-11-03 UTC. 코드 커밋 `8dc38f16d441ff757a3686565ad63036079fb429`을 현재 브랜치 `feat/workers-passkey-free-preview`에 push한 뒤, 검증한 번들·정적 파일로 기존 Worker에 배포했습니다. Worker 버전은 `5423e96a-2a58-4206-a179-df12b4095a0a`입니다. 기존 주소와 D1을 유지했으며 적용된 마이그레이션은 0005 한 건입니다. 배포 직전 유료 Workers/D1 구독 없음을 재확인했습니다.
+
+배포 후 HTTPS 8개 검사(health, 패스키 설정, 로그인 화면, 배포 파일 해시, 비로그인 보고서·CSV·상태 접근 차단)가 통과했습니다. 사후 D1 export를 새 SQLite 사본으로 복원해 계정·패스키·출퇴근·생산·신청·이력을 포함한 기존 테이블의 내용 해시가 배포 전과 동일함을 확인했습니다. 마이그레이션 목록과 트랜잭션 revision만 예상대로 변경됐습니다. 기존 출퇴근과 새 원본 보존 테이블도 일치합니다.
+
+배포 자료: `private/attendance-20261103/release-manifest.json`, `live-verification.json`, `post-deployment-verification.json`. 비공개 데이터와 export의 임시 다운로드 URL이 포함될 수 있는 실행 로그는 Git에서 제외했습니다. 배포 직전 Worker 버전은 `03ebbf55-a649-45cd-a6b2-529b5c6c7a8d`이며 코드 복귀가 필요할 때 참고합니다. DB는 자동 복구·초기화하지 않습니다.
 
 ## 검증 및 남은 확인
 
