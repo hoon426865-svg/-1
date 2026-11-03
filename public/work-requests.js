@@ -1,3 +1,5 @@
+import {attendanceCsv} from './attendance-report.js';
+import {attendanceReportView} from './attendance-view.js';
 import { captureDrafts, restoreDrafts, acceptForm, hasDrafts } from './drafts.js';
 const types = {overtime:'야근·추가 근무',annual:'연차',monthly:'월차',early:'조퇴',absence:'결근·기타 부재'};
 const statuses = {pending:'대기',approved:'승인',rejected:'반려'};
@@ -25,7 +27,7 @@ export function mountWorkRequests({root,api,me,employees,today,mode='requests',o
   function draw() {
     if(!root.isConnected) return;
     const drafts=captureDrafts(root);
-    root.innerHTML = mode==='report' ? `<section class="card"><h2>직원별 월간·연간 내역</h2><form id="work-report" class="request-form"><label>연도<input name="year" type="number" min="1900" max="9998" value="${today.slice(0,4)}" required></label><label>월<select name="month"><option value="">연간 전체</option>${Array.from({length:12},(_,i)=>`<option value="${String(i+1).padStart(2,'0')}">${i+1}월</option>`).join('')}</select></label><label>직원<select name="employeeId">${employeeOptions()}</select></label><button class="secondary">집계 조회</button><p role="alert" class="task-error wide"></p></form><div id="report-result">${report?reportView(report):'<p>연도와 월을 선택해 조회하세요.</p>'}</div>      <div data-work-history>${history?`<h3>변경·처리 이력</h3>${history.map(h=>`<article class="request-item"><strong>버전 ${h.version} · ${esc(actions[h.action])} · ${esc(h.actor_login)} · ${stamp(h.occurred_at)}</strong><p class="request-text">${esc(h.comment)}</p><p>${esc(types[h.snapshot.type])} · ${esc(statuses[h.snapshot.status])} · ${period(h.snapshot)}</p><p class="request-text">신청 사유: ${esc(h.snapshot.reason)}</p></article>`).join('')}`:''}</div><p data-work-error role="alert" class="task-error"></p></section>` : `<section class="card" id="work-requests"><h2>${admin?'근무 변경 신청 관리':'내 근무 변경 신청'}</h2>
+    root.innerHTML = mode==='report' ? `<section class="card"><h2>직원별 근태 · 월간·연간 보고서</h2><form id="work-report" class="request-form"><label>연도<input name="year" type="number" min="1900" max="9998" value="${today.slice(0,4)}" required></label><label>월<select name="month"><option value="">연간 전체</option>${Array.from({length:12},(_,i)=>`<option value="${String(i+1).padStart(2,'0')}">${i+1}월</option>`).join('')}</select></label><label>직원<select name="employeeId">${employeeOptions()}</select></label><button class="secondary">집계 조회</button><p role="alert" class="task-error wide"></p></form><div id="report-result">${report?reportView(report):'<p>연도와 월을 선택해 조회하세요.</p>'}</div>      <div data-work-history>${history?`<h3>변경·처리 이력</h3>${history.map(h=>`<article class="request-item"><strong>버전 ${h.version} · ${esc(actions[h.action])} · ${esc(h.actor_login)} · ${stamp(h.occurred_at)}</strong><p class="request-text">${esc(h.comment)}</p><p>${esc(types[h.snapshot.type])} · ${esc(statuses[h.snapshot.status])} · ${period(h.snapshot)}</p><p class="request-text">신청 사유: ${esc(h.snapshot.reason)}</p></article>`).join('')}`:''}</div><p data-work-error role="alert" class="task-error"></p></section>` : `<section class="card" id="work-requests"><h2>${admin?'근무 변경 신청 관리':'내 근무 변경 신청'}</h2>
       <p>신청·승인 기록을 보존합니다. 연차·월차 부여, 잔여 일수, 자동 차감은 계산하지 않습니다.</p>
       ${admin?'':form(editing||{})}
       <form id="work-filter" class="request-form"><label>기간 시작<input name="from" type="date" value="${esc(filters.from)}"></label><label>기간 종료<input name="to" type="date" value="${esc(filters.to)}"></label>
@@ -67,6 +69,23 @@ export function mountWorkRequests({root,api,me,employees,today,mode='requests',o
     bindReportHistory();
   }
   function bindReportHistory() {
+    root.querySelectorAll('[data-attendance-export]').forEach(button=>button.onclick=async()=>{
+      const error=root.querySelector('[data-export-error]');error.textContent='';
+      button.disabled=true;
+      try {
+        // Fetch through the admin-only API again before each export. Never export
+        // a partial page or silently reuse an old report after filters change.
+        const exported=await api('/api/admin/work-requests/report?'+new URLSearchParams(reportFilters));
+        if(!root.isConnected)return;
+        const data=exported.attendanceReport;
+        if(!data)throw Error('근태 자료를 다시 조회해 주세요.');
+        const url=URL.createObjectURL(new Blob([attendanceCsv(data,button.dataset.attendanceExport)],{type:'text/csv;charset=utf-8'}));
+        const link=document.createElement('a');link.href=url;
+        link.download=`onwork-attendance-${data.from}-${data.to}-${button.dataset.attendanceExport}.csv`;
+        document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      }catch(err){if(error.isConnected)error.textContent=err.message;}
+      finally{button.disabled=false;}
+    });
     root.querySelectorAll('[data-history]').forEach(b=>b.onclick=async()=>{
       try {const result=await api('/api/work-requests/history?id='+encodeURIComponent(b.dataset.history));if(!root.isConnected)return;history=result;draw();root.querySelector('[data-work-history]').scrollIntoView({behavior:'smooth',block:'start'});}
       catch(error){if(root.isConnected)root.querySelector('[data-work-error]').textContent=error.message;}
@@ -89,7 +108,7 @@ export function mountWorkRequests({root,api,me,employees,today,mode='requests',o
   return {refresh};
 }
 function reportView(report) {
-  return `<p>${esc(report.from)} ~ ${esc(report.to)} · 신청 대상 날짜 기준, 최신 처리 상태 집계</p><p class="small">부재 일수는 승인된 부재가 있는 날짜의 중복 없는 수입니다. 부분 시간 부재도 해당 날짜 1일로 표시하며 휴가 차감 일수가 아닙니다. 추가 근무는 승인된 신청 시간으로, 실제 출퇴근 시간과 별개입니다.</p>
-    <div class="table-wrap"><table><thead><tr><th>직원</th><th>신청</th><th>대기 / 승인 / 반려</th><th>승인 추가 근무</th><th>승인 부재 날짜 수</th><th>출근 기록</th><th>양품 / 불량</th></tr></thead><tbody>${report.summaries.map(s=>`<tr><td>${esc(s.number)} ${esc(s.name)}</td><td>${s.requests}</td><td>${s.pending} / ${s.approved} / ${s.rejected}</td><td>${(s.overtimeMinutes/60).toLocaleString('ko-KR',{maximumFractionDigits:2})}시간</td><td>${s.absenceDates}일</td><td>${s.attendance.length}건</td><td>${s.production.reduce((n,r)=>n+r.good,0)} / ${s.production.reduce((n,r)=>n+r.bad,0)}</td></tr>`).join('')}</tbody></table></div>
-    ${report.summaries.map(s=>`<details class="request-item"><summary>${esc(s.number)} ${esc(s.name)} 상세 내역</summary><h3>신청·처리</h3>${report.requests.filter(r=>r.employee_id===s.id).map(r=>`<p>${esc(types[r.type])} · ${period(r)} · ${esc(statuses[r.status])} · ${esc(r.actor_login||'—')} · ${stamp(r.decided_at)} · ${esc(r.comment||'—')} <button class="secondary" data-history="${esc(r.id)}">이력</button></p>`).join('')||'<p>신청 없음</p>'}<h3>출퇴근</h3>${s.attendance.map(r=>`<p>${esc(r.date)} · ${stamp(r.in_at)} ~ ${stamp(r.out_at)}</p>`).join('')||'<p>기록 없음</p>'}<h3>생산량</h3>${s.production.map(r=>`<p>${esc(r.date)} · ${esc(r.task_name)} · 양품 ${r.good} / 불량 ${r.bad}</p>`).join('')||'<p>기록 없음</p>'}</details>`).join('')}`;
+  return `${attendanceReportView(report.attendanceReport)}<details class="request-item" data-request-report><summary>신청·승인·생산 내역 펼치기</summary><p>${esc(report.from)} ~ ${esc(report.to)} · 신청 대상 날짜 기준, 최신 처리 상태 집계</p><p class="small">부재 일수는 승인된 부재가 있는 날짜의 중복 없는 수입니다. 부분 시간 부재도 해당 날짜 1일로 표시하며 휴가 차감 일수가 아닙니다. 추가 근무는 승인된 신청 시간으로, 실제 출퇴근 시간과 별개입니다.</p>
+    <div class="table-wrap"><table data-request-summary><thead><tr><th>직원</th><th>신청</th><th>대기 / 승인 / 반려</th><th>승인 추가 근무</th><th>승인 부재 날짜 수</th><th>출근 기록</th><th>양품 / 불량</th></tr></thead><tbody>${report.summaries.map(s=>`<tr><td>${esc(s.number)} ${esc(s.name)}</td><td>${s.requests}</td><td>${s.pending} / ${s.approved} / ${s.rejected}</td><td>${(s.overtimeMinutes/60).toLocaleString('ko-KR',{maximumFractionDigits:2})}시간</td><td>${s.absenceDates}일</td><td>${s.attendance.length}건</td><td>${s.production.reduce((n,r)=>n+r.good,0)} / ${s.production.reduce((n,r)=>n+r.bad,0)}</td></tr>`).join('')}</tbody></table></div>
+    ${report.summaries.map(s=>`<details class="request-item"><summary>${esc(s.number)} ${esc(s.name)} 상세 내역</summary><h3>신청·처리</h3>${report.requests.filter(r=>r.employee_id===s.id).map(r=>`<p>${esc(types[r.type])} · ${period(r)} · ${esc(statuses[r.status])} · ${esc(r.actor_login||'—')} · ${stamp(r.decided_at)} · ${esc(r.comment||'—')} <button class="secondary" data-history="${esc(r.id)}">이력</button></p>`).join('')||'<p>신청 없음</p>'}<h3>출퇴근</h3>${s.attendance.map(r=>`<p>${esc(r.date)} · ${stamp(r.in_at)} ~ ${stamp(r.out_at)}</p>`).join('')||'<p>기록 없음</p>'}<h3>생산량</h3>${s.production.map(r=>`<p>${esc(r.date)} · ${esc(r.task_name)} · 양품 ${r.good} / 불량 ${r.bad}</p>`).join('')||'<p>기록 없음</p>'}</details>`).join('')}</details>`;
 }

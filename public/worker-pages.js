@@ -1,19 +1,20 @@
 import {koreaNow} from './domain.js';
+import {buildAttendanceReport, overlapsPeriod} from './attendance-report.js';
 
 // Assemble revision-bound pages in the browser. Local Node responses remain
 // unchanged. A concurrent change aborts the whole load rather than mixing rows.
 export async function collectPages(path,first,fetchPage) {
   if(!first?.pageType)return first;
   const url=new URL(path,location.origin),result={...first};
-  const arrays=first.pageType==='list'?['items']:first.pageType==='state'?['employees','tasks','attendance','production','overtime']:['employees','attendance','production','requests'];
-  for(const key of arrays)result[key]=[...first[key]];
+  const arrays=first.pageType==='list'?['items']:first.pageType==='state'?['employees','tasks','attendance','production','overtime']:['employees','attendance','production','requests','overtime'];
+  for(const key of arrays)result[key]=[...(first[key]||[])];
   let next=first.pageType==='list'?first.next:first.nextCursor;
   while(next){
     url.searchParams.set(first.pageType==='list'?'after':'cursor',next);
     url.searchParams.set('revision',String(first.revision));
     const page=await fetchPage(url.pathname+url.search);
     if(page.pageType!==first.pageType||page.revision!==first.revision)throw Error('조회 중 변경이 있습니다. 다시 조회하세요.');
-    for(const key of arrays)result[key].push(...page[key]);
+    for(const key of arrays)result[key].push(...(page[key]||[]));
     next=first.pageType==='list'?page.next:page.nextCursor;
   }
   if(first.pageType==='list')return result.items.sort((a,b)=>a.start_date?b.start_date.localeCompare(a.start_date)||b.created_at.localeCompare(a.created_at):a.version&&b.version?a.version-b.version:0);
@@ -27,6 +28,8 @@ export async function collectPages(path,first,fetchPage) {
   result.employees.sort((a,b)=>a.number.localeCompare(b.number));
   const people=new Map(result.employees.map(e=>[e.id,e]));
   result.requests=result.requests.map(r=>({...r,employee_name:people.get(r.employee_id)?.name,employee_number:people.get(r.employee_id)?.number})).sort((a,b)=>b.start_date.localeCompare(a.start_date)||b.created_at.localeCompare(a.created_at));
+  result.attendanceReport=buildAttendanceReport({...result,requests:result.requests});
+  result.requests=result.requests.filter(r=>overlapsPeriod(r,result.from,result.to));
   result.summaries=result.employees.map(person=>reportSummary(person,result));return result;
 }
 export function reportSummary(person,{requests,attendance,production,from,to}) {
