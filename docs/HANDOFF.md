@@ -1,3 +1,11 @@
+# 최신 유급 휴게 정책 배포 — 2026-11-03
+
+GitHub 코드 `8147beb`를 기존 고정 무료 Worker에 배포했습니다. 최신 기준·검사·보존 결과는 [PAID-BREAKS.md](PAID-BREAKS.md)의 배포 확인을 따릅니다. 주소는 https://onwork-preview-20261007-01.hoon426865.workers.dev 이며 활성 버전은 `d40effcc-261d-4969-9787-40ed22e17392`입니다.
+
+D1 전체 백업·사본 검증 후 `0006_paid_break_policy.sql`만 적용했습니다. 기존 계정·패스키·업무 자료와 테스트 데이터를 보존했습니다. Node 74개·Worker 37개·브라우저 10개·배포 후 HTTPS 10개 검사 통과. 배포된 화면과 동일 Worker 코드의 격리 정상일 표본에서 실근무 460분(7시간 40분), 급여 인정 기본시간 8시간을 확인했습니다. 실제 앱에 테스트 기록을 만들거나 삭제하지 않았습니다. 기존 CPU 미커밋 변경과 아래 인계 본문은 그대로 보존합니다.
+
+---
+
 # 최신 근태 보고서 배포 — 2026-11-03
 
 현재 근태 기능·검사·백업·배포 결과는 [ATTENDANCE-REPORTS.md](ATTENDANCE-REPORTS.md)를 따릅니다. 코드 `8dc38f1`을 현재 브랜치에 push하고 기존 무료 Worker에 배포했습니다. 주소는 https://onwork-preview-20261007-01.hoon426865.workers.dev 입니다. Worker 버전: `5423e96a-2a58-4206-a179-df12b4095a0a`.
