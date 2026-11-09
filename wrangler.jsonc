@@ -1,0 +1,77 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "onwork-local",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-09-30",
+  "workers_dev": false,
+  "assets": {
+    "directory": "worker-assets",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "APP_ORIGIN": "https://onwork-local.invalid.workers.dev",
+    "SITE_ID": "local-site",
+    "ENVIRONMENT": "local",
+    "MAINTENANCE_MODE": "0",
+    "AUTH_MODE": "passkey"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "onwork-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "env": {
+    "preview": {
+      "name": "onwork-preview-20261007-01",
+      "workers_dev": true,
+      "preview_urls": false,
+      "vars": {
+        "APP_ORIGIN": "https://onwork-preview-20261007-01.hoon426865.workers.dev",
+        "SITE_ID": "site-1",
+        "ENVIRONMENT": "preview",
+        "MAINTENANCE_MODE": "0",
+        "AUTH_MODE": "passkey",
+        "ENROLLMENT_PUBLIC_KEY": "{\"kty\":\"EC\",\"x\":\"ivZAM0_VwOSt_rjrRB3aNEJig7zX5O1VT_RCJpvxZj8\",\"y\":\"jvwNkkq5t2kCfgvF3xX6sHpTfSlKDfyDyBcgLU1IHxc\",\"crv\":\"P-256\"}"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "onwork-preview-20261007-01",
+          "database_id": "6cf3c747-3708-4f6a-8961-ab4ad9c41686",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "redact_query_string": true,
+        "head_sampling_rate": 1
+      }
+    },
+    "production": {
+      "name": "onwork",
+      "workers_dev": true,
+      "preview_urls": false,
+      "vars": {
+        "APP_ORIGIN": "https://onwork.REPLACE.workers.dev",
+        "SITE_ID": "REPLACE_EXISTING_SITE_ID",
+        "ENVIRONMENT": "production",
+        "MAINTENANCE_MODE": "1",
+        "AUTH_MODE": "passkey",
+        "ENROLLMENT_PUBLIC_KEY": "REPLACE_OFFLINE_ISSUER_PUBLIC_JWK"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "onwork-production",
+          "database_id": "REPLACE_PRODUCTION_D1_ID",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  },
+  "account_id": "e4ff9b8a159d8def553c7eda4c09cdb3"
+}
