@@ -55,7 +55,7 @@ python3 -m unittest discover -s tests -p 'test_operations_upgrade.py' > "$run/lo
 
 phase='Cloudflare 인증'
 printf '3/6 Cloudflare 연결을 확인합니다.\n'
-if ! ./node_modules/.bin/wrangler whoami > "$run/logs/whoami.log" 2>&1 || ! rg -q 'e4ff9b8a159d8def553c7eda4c09cdb3' "$run/logs/whoami.log"; then
+if ! ./node_modules/.bin/wrangler whoami > "$run/logs/whoami.log" 2>&1 || [[ "$(<"$run/logs/whoami.log")" != *e4ff9b8a159d8def553c7eda4c09cdb3* ]]; then
   printf '아래 공식 인증 주소를 열고 표시된 코드를 승인해 주세요.\n'
   ./node_modules/.bin/wrangler login --device --browser=false --scopes account:read user:read workers:write workers_scripts:write d1:write
 fi
