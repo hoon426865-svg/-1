@@ -46,8 +46,8 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
     await second.call('/api/work-requests',{type:'absence',startDate:'2026-09-29',endDate:'2026-09-29',allDay:true,reason:'다른 직원 비공개 신청'});
     await login(admin,'ADMIN');await login(employee,'001');
 
-    await t.test('관리자 7개·직원 5개 메뉴와 서버 권한·본인 기록',async()=>{
-      assert.equal(await admin.locator('#app-navigation a').count(),7);
+    await t.test('관리자 9개·직원 5개 메뉴와 서버 권한·본인 기록',async()=>{
+      assert.equal(await admin.locator('#app-navigation a').count(),9);
       assert.equal(await employee.locator('#app-navigation a').count(),5);
       assert.equal(await employee.locator('[data-page=employees],[data-page=reports]').count(),0);
       assert.equal((await request(employee,'/api/admin/work-requests/report?year=2026')).status,403);

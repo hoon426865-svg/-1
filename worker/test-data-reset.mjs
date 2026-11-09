@@ -39,6 +39,7 @@ async function collect(db,selection){
     tables[table]=await all(db,`SELECT * FROM ${table} WHERE ${column} IN(${idsSql}) ORDER BY ${keys[table]} LIMIT ${MAX_ROWS+1}`,JSON.stringify(values));
     check(tables[table].length<=MAX_ROWS,413,'연결 기록이 많습니다. 더 적은 항목을 선택하세요.');
   };
+  if(kind==='production'&&await one(db,"SELECT 1 FROM sqlite_master WHERE name='ops_runs'"))check(!await one(db,`SELECT 1 FROM ops_runs WHERE production_id IN(${idsSql}) LIMIT 1`,encoded),409,'품목·LOT에 연결된 생산 기록은 테스트 삭제 대상에서 제외하세요.');
   tables[kind]=roots;
   if(kind==='attendance'){
     await read('attendance_originals','attendance_id',ids);await read('attendance_adjustments','attendance_id',ids);await read('overtime','attendance_id',ids);

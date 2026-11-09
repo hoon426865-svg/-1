@@ -75,3 +75,20 @@ input[type=checkbox]{display:inline-block;width:auto;min-height:auto;margin:0 8p
 .reset-confirm label{display:block;margin:12px 0}
 .reset-confirm textarea{display:block;width:100%;min-height:80px;margin-top:8px;padding:12px;border:1px solid #d5dedf;border-radius:8px;font:inherit}
 .reset-confirm button{margin:8px 8px 0 0}
+
+/* Operations share the existing card, form and navigation vocabulary. */
+.ops-panel .ops-row{border-top:1px solid var(--border,#dde5df);padding:18px 0;overflow-wrap:anywhere}
+.ops-row p{margin:6px 0}.ops-row .request-form{margin-top:16px}
+.ops-toolbar{display:flex;align-items:center;gap:16px;margin:20px 0;color:#53645a;font-size:.9rem}
+.ops-status{display:inline-block;border-radius:6px;padding:3px 8px;background:#edf1ee;font-size:.85rem;font-weight:600}
+.ops-released,.ops-approved,.ops-pass{background:#e1f2e7;color:#155c36}
+.ops-held,.ops-rejected,.ops-fail{background:#fbe7e5;color:#9c3129}
+.ops-pending{background:#fff1d3;color:#7c5914}
+.ops-selected{border:1px solid #a6beaf;border-radius:12px;padding:20px;margin:20px 0;background:#f8fbf9}
+.ops-warning{background:#fff4dc;color:#6d4f19;padding:12px;border-radius:8px}
+.ops-detail{margin:16px 0;padding:14px;border:1px solid #dce5df;border-radius:8px}
+.ops-detail summary{cursor:pointer;font-weight:600;margin-bottom:10px}
+.ops-check{display:flex!important;align-items:center;gap:10px;flex-direction:row!important}
+.ops-check input{width:auto;min-height:22px;flex:0 0 auto}.ops-panel textarea{min-height:90px}
+.ops-panel .request-form{margin:18px 0}.ops-panel h3{margin:24px 0 12px}
+@media(max-width:600px){.ops-selected{padding:12px}.ops-toolbar{flex-wrap:wrap}.ops-panel .request-form{grid-template-columns:1fr}}

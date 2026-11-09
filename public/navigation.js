@@ -2,6 +2,8 @@ export const menuItems = [
   {id:'home',label:'홈',description:'오늘의 현황과 자주 쓰는 기능'},
   {id:'attendance',label:'출퇴근',description:'출근·퇴근 기록 확인'},
   {id:'production',label:'생산 관리',description:'작업과 생산량 관리'},
+  {id:'materials',label:'자재 관리',permission:'materials'},
+  {id:'quality',label:'품질 관리',permission:'quality'},
   {id:'requests',label:'근무 신청',description:'신청과 처리 이력'},
   {id:'employees',label:'직원 관리',admin:true},
   {id:'reports',label:'통계·보고서',admin:true},
@@ -38,7 +40,7 @@ function select(focus=false) {
   }
 }
 export function mountNavigation(me, callback=()=>{}) {
-  allowed = menuItems.filter(item => !item.admin || me.role === 'admin');
+  allowed = menuItems.filter(item => (!item.admin || me.role === 'admin') && (!item.permission || me.operations?.[item.permission]));
   onSelect = callback;
   nav.innerHTML = `<p class="nav-caption">업무 메뉴</p>${allowed.map(item => `<a href="#${item.id}"><span>${item.label}</span><span aria-hidden="true">›</span></a>`).join('')}<p class="nav-footnote">${me.role==='admin'?'관리자':'직원'} 화면 · 한국 시간 기준</p>`;
   nav.hidden = false; toggle.hidden = false;

@@ -1,3 +1,4 @@
+import {operations} from './operations.mjs';
 import {settings,token,digest,hashPassword,verifyPassword,dummyHash} from './security.mjs';
 import {check,one,all,begin,consistent,audit,boundedDatabase,statement} from './d1.mjs';
 import {koreaNow,needsReview,validateQuantity} from '../public/domain.js';
@@ -154,6 +155,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
       return finish({ok:true},200,{'Set-Cookie':cookie('',0)});
     }
     check(!user.must_change,403,'먼저 임시 비밀번호를 변경하세요.');
+    if(path.startsWith('/api/operations/')){const result=await operations(db,tx,user,url,method,body,stamp);return method==='GET'?read(result):finish(result);}
     if(path==='/api/admin/test-data/items'&&method==='GET')return read(await listResetItems(db,user,url.searchParams,tx.revision));
     if(path==='/api/admin/test-data/preview'&&method==='POST')return finish(await prepareReset(db,tx,user,body,stamp));
     if(path==='/api/admin/test-data/execute'&&method==='POST')return finish(await executeReset(db,tx,user,body,stamp));
@@ -239,6 +241,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
       audit(tx,user,'attendance_update',before.id,reason,before,{...before,date,in_at:inAt,out_at:outAt,version:before.version+1},stamp);return finish({ok:true});
     }
     if(path==='/api/admin/production'&&method==='POST'){
+      check(!await one(db,'SELECT 1 FROM ops_runs WHERE production_id=?',body.id),409,'품목·LOT 생산 화면에서 정정하세요.');
       const reason=text(body.reason,500),error=validateQuantity(body.good,body.bad);check(!error,400,error);const before=await row(db,'production',body.id);version(before,body);const task=await row(db,'tasks',body.taskId);
       tx.add('UPDATE production SET task_id=?,task_name=?,good=?,bad=?,version=version+1 WHERE id=?',task.id,task.name,Number(body.good),Number(body.bad),before.id);
       audit(tx,user,'production_update',before.id,reason,before,{...before,task_id:task.id,task_name:task.name,good:Number(body.good),bad:Number(body.bad),version:before.version+1},stamp);return finish({ok:true});
@@ -255,7 +258,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
-  const assets=['/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/test-data-reset.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
+  const assets=['/operations.js','/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/test-data-reset.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
   check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);
