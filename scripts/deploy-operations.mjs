@@ -109,8 +109,10 @@ export async function deploy(){
       phase='DB 변경 적용';
       const migrationFile=join(run,'before','migration.sql');
       requireCheck(sha256(readFileSync(migrationFile))===plan.migration_sha256,'검증 이후 SQL 파일이 변경됐습니다.');
-      // Wrangler file import is atomic. Never run earlier migrations or a full restore.
-      wrangler(['d1','execute','DB','--remote','--file',migrationFile,'--yes','--json'],{json:true,label:'migration'});
+      // File imports can mix progress text with JSON on stdout. Keep that output
+      // as a private log; require exit success and the fresh export/schema check
+      // below before deploying code. Never infer the DB state from stdout alone.
+      wrangler(['d1','execute','DB','--remote','--file',migrationFile,'--yes'],{label:'migration'});
     }else console.log('5/6 DB 변경이 이미 적용되어 있어 건너뜁니다.');
     phase='DB 변경 후 검사';
     wrangler(['d1','export','DB','--remote','--output',join(run,'after.sql'),'--skip-confirmation'],{label:'backup-after'});
