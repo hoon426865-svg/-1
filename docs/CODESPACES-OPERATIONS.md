@@ -1,6 +1,6 @@
 # Codespaces에서 기존 온워크에 반영하기
 
-이 문서는 **배포 준비** 상태다. 이 작업 환경에서는 Cloudflare 인증 결과 수신이 차단되어 운영 DB와 Worker를 변경하지 않았다. 사용자가 기존 GitHub Codespaces에서 아래 도구를 실행하면 배포한다. 고정 주소는 https://onwork-preview-20261007-01.hoon426865.workers.dev 이다.
+2026-11-09 (한국 시간), 사용자가 공유한 기존 Codespaces 실행 화면에서 `771622eb714d4a32683a05e2afd1cd4035eb23f3`의 **`ONWORK_DEPLOY_OK`와 공개 접속 검사 완료**를 확인했다. 고정 주소는 https://onwork-preview-20261007-01.hoon426865.workers.dev 이다. 품목 JSON 가져오기와 실제 사용자 로그인·업무 확인은 후속 단계다. 상세 확인 범위는 [운영 확장 배포 기록](OPERATIONS.md)을 따른다. 아래 절차는 향후 재실행에도 사용할 수 있다.
 
 ## 실행
 
