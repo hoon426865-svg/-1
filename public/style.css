@@ -92,3 +92,8 @@ input[type=checkbox]{display:inline-block;width:auto;min-height:auto;margin:0 8p
 .ops-check input{width:auto;min-height:22px;flex:0 0 auto}.ops-panel textarea{min-height:90px}
 .ops-panel .request-form{margin:18px 0}.ops-panel h3{margin:24px 0 12px}
 @media(max-width:600px){.ops-selected{padding:12px}.ops-toolbar{flex-wrap:wrap}.ops-panel .request-form{grid-template-columns:1fr}}
+
+.ops-quality-tabs,.ops-row-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+.ops-quality-tabs button{flex:1;min-width:180px}.ops-row-actions button{min-height:42px}
+.ops-delivered{background:#e5eef8;color:#264a70}.ops-cancelled{background:#edf0f0;color:#606d73}
+.ops-panel [data-item-match]{margin:0;overflow-wrap:anywhere}

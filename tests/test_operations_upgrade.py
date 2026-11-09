@@ -46,7 +46,7 @@ class OperationsUpgradeTests(unittest.TestCase):
     def test_stage_six_backfills_only_seven_and_eight_preserving_existing_rows(self):
         before = {name: upgrade.digest(self.db, name) for name in ['users', 'employees', 'production', 'audit', 'sessions', 'worker_revision']}
         report = self.run_plan()
-        self.assertEqual(report['pending_migrations'], ['0007_test_data_reset.sql', '0008_operations.sql'])
+        self.assertEqual(report['pending_migrations'], ['0007_test_data_reset.sql', '0008_operations.sql', '0009_quality_deliveries.sql'])
         self.apply_to_fixture('check')
         self.assertEqual(before, {name: upgrade.digest(self.db, name) for name in before})
         with self.assertRaises(sqlite3.IntegrityError):
@@ -59,9 +59,9 @@ class OperationsUpgradeTests(unittest.TestCase):
         self.db.executescript(upgrade.MIGRATIONS[6].read_text())
         self.db.executescript("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); INSERT INTO d1_migrations(name) VALUES('0007_test_data_reset.sql');")
         report = self.run_plan()
-        self.assertEqual(report['pending_migrations'], ['0008_operations.sql'])
+        self.assertEqual(report['pending_migrations'], ['0008_operations.sql', '0009_quality_deliveries.sql'])
         self.apply_to_fixture('check')
-        self.assertEqual(self.db.execute('SELECT name FROM d1_migrations ORDER BY id').fetchall(), [('0007_test_data_reset.sql',), ('0008_operations.sql',)])
+        self.assertEqual(self.db.execute('SELECT name FROM d1_migrations ORDER BY id').fetchall(), [('0007_test_data_reset.sql',), ('0008_operations.sql',), ('0009_quality_deliveries.sql',)])
 
     def test_partial_schema_and_disagreeing_ledger_stop(self):
         self.db.execute('CREATE TABLE ops_items(id TEXT PRIMARY KEY)')

@@ -56,7 +56,7 @@ export async function checkPublicApp(fetcher=fetch,assetRoot='worker-assets'){
   requireCheck(setup.authMode==='passkey'&&setup.appOrigin===target.origin&&setup.required===false,'패스키 설정 검사 실패');
   await get('/api/operations/context',401);
   await get('/api/status',401);
-  for(const name of ['index.html','app.js','operations.js','style.css']){
+  for(const name of ['index.html','app.js','operations.js','operations-domain.js','style.css']){
     const body=Buffer.from(await (await get(name==='index.html'?'/login':'/'+name,200)).arrayBuffer());
     requireCheck(sha256(body)===sha256(readFileSync(join(assetRoot,name))),`배포 파일 불일치: ${name}`);
   }

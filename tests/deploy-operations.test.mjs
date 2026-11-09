@@ -32,7 +32,7 @@ test('배포 도구는 최신 활성 버전을 찾고 분할 배포를 거부한
 
 test('배포 후 검사는 기존 인증·접근 제한·배포 파일의 실제 내용을 확인한다',async()=>{
   const root=mkdtempSync(join(tmpdir(),'onwork-deploy-check-'));
-  const files=['index.html','app.js','operations.js','style.css'];
+  const files=['index.html','app.js','operations.js','operations-domain.js','style.css'];
   for(const file of files)writeFileSync(join(root,file),'synthetic '+file);
   let mode='valid';
   const mock=async url=>{
@@ -43,7 +43,7 @@ test('배포 후 검사는 기존 인증·접근 제한·배포 파일의 실제
     return new Response(mode==='stale'?'stale asset':readFileSync(join(root,path==='/login'?'index.html':path.slice(1))));
   };
   try{
-    assert.equal((await checkPublicApp(mock,root)).length,8);
+    assert.equal((await checkPublicApp(mock,root)).length,9);
     mode='password';await assert.rejects(checkPublicApp(mock,root),/패스키/);
     mode='public-data';await assert.rejects(checkPublicApp(mock,root),/접속 검사/);
     mode='stale';await assert.rejects(checkPublicApp(mock,root),/파일 불일치/);

@@ -11,7 +11,7 @@ import re
 import sqlite3
 
 ROOT = Path(__file__).resolve().parent.parent
-MIGRATIONS = sorted((ROOT / 'migrations').glob('000[1-8]_*.sql'))
+MIGRATIONS = sorted((ROOT / 'migrations').glob('000[1-9]_*.sql'))
 TOKEN = re.compile(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|\[[^\]]*\]|\w+|[^\s]", re.S)
 
 
@@ -53,7 +53,7 @@ def check_integrity(db):
 
 
 def reference_schemas():
-    require(len(MIGRATIONS) == 8, 'Expected exactly eight known migration files')
+    require(len(MIGRATIONS) == 9, 'Expected exactly nine known migration files')
     db = sqlite3.connect(':memory:')
     snapshots = {}
     try:
@@ -81,11 +81,11 @@ def prepare(backup, output, expect_current=False, before_report=None):
         # Match the complete schema, not just migration ledger rows/table counts.
         candidates = [stage for stage, expected in references.items()
                       if all(actual.get(name) == definition for name, definition in expected.items())
-                      and not any(name in actual for name in references[8].keys() - expected.keys())]
+                      and not any(name in actual for name in references[9].keys() - expected.keys())]
         require(len(candidates) == 1, 'Unknown or partially applied schema; stopped without remote changes')
         stage = candidates[0]
         if expect_current:
-            require(stage == 8, 'Post-upgrade schema is incomplete')
+            require(stage == 9, 'Post-upgrade schema is incomplete')
         require(db.execute('SELECT version FROM schema_version').fetchall() == [(1,)], 'Unexpected application schema version')
         require(db.execute('SELECT count(*) FROM worker_revision WHERE id=1').fetchone()[0] == 1, 'Missing D1 revision guard')
         existing_policy = db.execute("SELECT effective_from,definition_json FROM attendance_policies WHERE id='attendance-2026-11-03-v2'").fetchone()
@@ -107,7 +107,7 @@ def prepare(backup, output, expect_current=False, before_report=None):
         if planned_sql:
             db.executescript('BEGIN;\n' + planned_sql + '\nCOMMIT;')
         check_integrity(db)
-        require(all(schema(db).get(name) == definition for name, definition in references[8].items()), 'Rehearsed schema mismatch')
+        require(all(schema(db).get(name) == definition for name, definition in references[9].items()), 'Rehearsed schema mismatch')
         require(all(digest(db, table) == value for table, value in before.items() if table != 'd1_migrations'), 'Migration changed existing data')
         report = {
             'detected_stage': stage,

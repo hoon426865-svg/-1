@@ -20,7 +20,7 @@ test('배포 후 접속 검사를 실제 Worker 번들과 격리 DB에 실행한
     const db=await mf.getD1Database('DB');
     for(const name of (await readdir('migrations')).filter(n=>n.endsWith('.sql')).sort())await applySql(db,'migrations/'+name);
     const checks=await checkPublicApp((url,options)=>mf.dispatchFetch(url,options));
-    assert.equal(checks.length,8);
+    assert.equal(checks.length,9);
     assert.ok(checks.some(check=>check.path==='/login'&&check.status===200));
     assert.equal((await db.prepare('SELECT count(*) n FROM users').first()).n,0);
   }finally{await mf.dispose();}

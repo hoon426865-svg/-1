@@ -21,13 +21,13 @@ if(event==='deployments list'){
   console.log(JSON.stringify({id:versionId(),resources:{bindings:[{name:'DB',type:'d1',id:config.env.preview.d1_databases[0].database_id},{name:'ASSETS',type:'assets'},...Object.entries(config.env.preview.vars).map(([name,text])=>({name,type:'plain_text',text}))],script_runtime:{compatibility_date:config.compatibility_date}}}));
 }else if(event==='d1 export'){
   const output=args[args.indexOf('--output')+1];
-  copyFileSync(join(root,applied()&&mode!=='incomplete-schema'?'stage8.sql':'stage7.sql'),output);
+  copyFileSync(join(root,applied()&&mode!=='incomplete-schema'?'stage9.sql':'stage8.sql'),output);
   console.log('Synthetic export complete');
 }else if(event==='d1 execute'){
   if(mode==='migration-failed'){console.error('Synthetic import failure');process.exit(1);}
   if(applied()){console.error('Migration was already applied');process.exit(2);}
   const sql=readFileSync(args[args.indexOf('--file')+1],'utf8');
-  if(!sql.includes('CREATE TABLE ops_items'))process.exit(3);
+  if(!sql.includes('CREATE TABLE ops_deliveries'))process.exit(3);
   writeFileSync(join(root,'applied'),'yes');
   // Reproduce Wrangler's successful import with non-JSON progress output.
   console.log('Uploading file...\nProcessing import...\n[{"success":true}]');
@@ -50,7 +50,7 @@ globalThis.fetch=async(input)=>{
   if(url.pathname==='/api/setup')return Response.json({authMode:'passkey',required:false,appOrigin:config.env.preview.vars.APP_ORIGIN});
   if(['/api/operations/context','/api/status'].includes(url.pathname))return Response.json({}, {status:401});
   const file=url.pathname==='/login'?'index.html':url.pathname.slice(1);
-  if(!['index.html','app.js','operations.js','style.css'].includes(file))throw Error('Unexpected asset in offline test');
+  if(!['index.html','app.js','operations.js','operations-domain.js','style.css'].includes(file))throw Error('Unexpected asset in offline test');
   return new Response(readFileSync(join('worker-assets',file)));
 };
 `;
@@ -64,18 +64,18 @@ function workflow(mode){
     cpSync(join(repo,'migrations'),join(source,'migrations'),{recursive:true});
     writeFileSync(join(run,'logs/verify.log'),'Synthetic regression prerequisite');
     writeFileSync(join(source,'package.json'),' {"type":"module"}');
-    for(const file of ['index.html','app.js','operations.js','style.css'])writeFileSync(join(source,'worker-assets',file),'synthetic '+file);
+    for(const file of ['index.html','app.js','operations.js','operations-domain.js','style.css'])writeFileSync(join(source,'worker-assets',file),'synthetic '+file);
     writeFileSync(join(source,'node_modules/.bin/wrangler'),'#!'+process.execPath+'\n'+fakeWrangler,{mode:0o700});
     writeFileSync(join(source,'offline-network.mjs'),fakeNetwork);
     execFileSync('python3',['-c',String.raw`
 import pathlib, sqlite3, sys
 root=pathlib.Path(sys.argv[1]); db=sqlite3.connect(':memory:')
 files=sorted((root/'source/migrations').glob('*.sql'))
-for file in files[:7]: db.executescript(file.read_text())
+for file in files[:8]: db.executescript(file.read_text())
 db.execute("INSERT INTO users(id,login,password_hash,role,must_change) VALUES('synthetic-admin','ADMIN','synthetic','admin',0)")
-(root/'stage7.sql').write_text('\n'.join(db.iterdump()))
-db.executescript(files[7].read_text())
 (root/'stage8.sql').write_text('\n'.join(db.iterdump()))
+db.executescript(files[8].read_text())
+(root/'stage9.sql').write_text('\n'.join(db.iterdump()))
 db.close()
 `,run]);
     const result=spawnSync(process.execPath,['--import',join(source,'offline-network.mjs'),join(repo,'scripts/deploy-operations.mjs')],{

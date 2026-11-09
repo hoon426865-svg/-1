@@ -33,13 +33,18 @@ def verify(expected_path, export_path, output):
                 if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone() and db.execute('SELECT count(*) FROM "'+table+'"').fetchone()[0]:
                     raise ValueError('Reset confirmation state must not be migrated: '+table)
             required=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'revision_%'")]
-            if len(required) not in (48,54,61,66,70,91):
+            if len(required) not in (48,54,61,66,70,91,97):
                 raise ValueError('Expected revision triggers missing')
             if db.execute("SELECT 1 FROM sqlite_master WHERE name='ops_items'").fetchone():
                 for table in ['ops_permissions','ops_items','ops_runs','ops_lots','ops_movements','ops_inspections','ops_requests']:
                     for action in ['insert','update','delete']:
                         if 'revision_'+table+'_'+action not in required:
                             raise ValueError('Operations revision trigger missing')
+            if db.execute("SELECT 1 FROM sqlite_master WHERE name='ops_deliveries'").fetchone():
+                for table in ['ops_deliveries','ops_delivery_inspections']:
+                    for action in ['insert','update','delete']:
+                        if 'revision_'+table+'_'+action not in required:
+                            raise ValueError('Delivery revision trigger missing')
     os.umask(0o077)
     with open(output,'x') as f:
         f.write("UPDATE worker_import SET verified=1 WHERE id=1 AND source_digest='"+expected['source_sha256']+"';\n")

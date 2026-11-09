@@ -1,5 +1,6 @@
 import {all,one,check,audit} from './d1.mjs';
 import {koreaNow} from '../public/domain.js';
+import {isDeliveryItem,normalizeDrawing} from '../public/operations-domain.js';
 
 const text=(value,max=200,optional=false)=>{check(typeof value==='string'&&(optional||value.trim())&&value.trim().length<=max,400,`입력값을 확인하세요. (최대 ${max}자)`);return value.trim();};
 const integer=(value,min=0,max=999999)=>{check(['number','string'].includes(typeof value)&&String(value).trim()!==''&&Number.isSafeInteger(Number(value))&&Number(value)>=min&&Number(value)<=max,400,`${min}~${max} 범위의 정수를 입력하세요.`);return Number(value);};
@@ -10,6 +11,9 @@ const canonical=value=>JSON.stringify(Object.fromEntries(Object.entries(value).s
 const page=params=>integer(params.get('page')||0,0,100000)*50;
 async function item(db,id){const row=await one(db,'SELECT * FROM ops_items WHERE id=? AND active=1',text(id));check(row,404,'활성 품목을 찾을 수 없습니다.');return row;}
 async function lot(db,body){const row=await one(db,'SELECT * FROM ops_lots WHERE id=?',text(body.id));check(row,404,'LOT를 찾을 수 없습니다.');version(row,body);return row;}
+async function enteredItem(db,body){const product=await item(db,body.itemId);if(body.drawing!==undefined)check(normalizeDrawing(text(body.drawing,80))===normalizeDrawing(product.drawing),400,'입력한 도면번호와 품목이 다릅니다. 다시 확인하세요.');return product;}
+async function delivery(db,body){const row=await one(db,'SELECT * FROM ops_deliveries WHERE id=?',text(body.id));check(row,404,'납품 대상을 찾을 수 없습니다.');version(row,body);check(!['delivered','cancelled'].includes(row.status),409,'이미 납품 완료 또는 취소된 기록입니다.');return row;}
+function dueDate(value){const date=text(value||'',10,true);check(!date||/^\d{4}-\d{2}-\d{2}$/.test(date)&&Number.isFinite(Date.parse(date))&&new Date(date).toISOString().slice(0,10)===date,400,'납품 예정일을 확인하세요.');return date;}
 async function rights(db,user){
   if(user.role==='admin')return {production_review:true,materials:true,quality:true};
   const row=await one(db,'SELECT * FROM ops_permissions WHERE user_id=?',user.id);
@@ -38,6 +42,8 @@ export async function operations(db,tx,user,url,method,body,stamp){
     else if(path==='materials'||path==='quality')rows=await all(db,'SELECT l.*,i.drawing,i.name item_name,i.model,i.criteria,i.warnings,i.source FROM ops_lots l JOIN ops_items i ON i.id=l.item_id ORDER BY l.created_at DESC,l.id DESC LIMIT 51 OFFSET ?',offset);
     else if(path==='materials/history')rows=await all(db,'SELECT m.*,l.code,i.drawing,u.login actor FROM ops_movements m JOIN ops_lots l ON l.id=m.lot_id JOIN ops_items i ON i.id=l.item_id JOIN users u ON u.id=m.actor_id ORDER BY m.created_at DESC,m.id DESC LIMIT 51 OFFSET ?',offset);
     else if(path==='quality/history')rows=await all(db,'SELECT q.*,l.code,i.drawing,u.login actor FROM ops_inspections q JOIN ops_lots l ON l.id=q.lot_id JOIN ops_items i ON i.id=l.item_id JOIN users u ON u.id=q.actor_id ORDER BY q.created_at DESC,q.id DESC LIMIT 51 OFFSET ?',offset);
+    else if(path==='quality/deliveries')rows=await all(db,'SELECT d.*,i.drawing,i.name item_name,i.model,i.criteria,i.warnings,i.source FROM ops_deliveries d JOIN ops_items i ON i.id=d.item_id ORDER BY CASE WHEN d.status IN(\'delivered\',\'cancelled\') THEN 1 ELSE 0 END,d.created_at DESC,d.id DESC LIMIT 51 OFFSET ?',offset);
+    else if(path==='quality/deliveries/history')rows=await all(db,"SELECT q.*,d.code,d.customer,i.drawing,u.login actor,'shipping' stage FROM ops_delivery_inspections q JOIN ops_deliveries d ON d.id=q.delivery_id JOIN ops_items i ON i.id=d.item_id JOIN users u ON u.id=q.actor_id ORDER BY q.created_at DESC,q.id DESC LIMIT 51 OFFSET ?",offset);
     else check(false,404,'업무 API를 찾을 수 없습니다.');
     return {rows:rows.slice(0,50),hasMore:rows.length>50,page:offset/50};
   }
@@ -83,10 +89,14 @@ export async function operations(db,tx,user,url,method,body,stamp){
     before=await one(db,'SELECT r.*,p.good,p.bad,p.employee_id FROM ops_runs r JOIN production p ON p.id=r.production_id WHERE r.production_id=?',text(body.id));check(before,404,'생산 기록을 찾을 수 없습니다.');version(before,body);check(before.status==='pending',409,'이미 검토된 기록입니다.');
     check(before.employee_id!==user.employee_id,403,'본인의 생산 기록은 다른 담당자가 검토해야 합니다.');
     const status=choice(body.status,['approved','rejected']);reason=text(body.reason,500);target=before.production_id;after={status,reason};
-    if(status==='approved'&&before.good>0){await item(db,before.item_id);result.lotId=await createLot(db,tx,user,{item_id:before.item_id,code:before.lot_code,supplier:'',origin:'production',production_id:target,quantity:before.good,reason},stamp);}
+    if(status==='approved'&&before.good>0){
+      const product=await item(db,before.item_id);
+      if(isDeliveryItem(product))result.qualityDirect=true;
+      else result.lotId=await createLot(db,tx,user,{item_id:before.item_id,code:before.lot_code,supplier:'',origin:'production',production_id:target,quantity:before.good,reason},stamp);
+    }
     tx.add('UPDATE ops_runs SET status=?,reviewer_id=?,reviewed_at=?,review_reason=?,version=version+1 WHERE production_id=?',status,user.id,stamp,reason,target);
   }else if(path==='materials/receive'){
-    const product=await item(db,body.itemId);reason=text(body.reason,500);after={item_id:product.id,code:text(body.lotCode,80),supplier:text(body.supplier,100),origin:'receipt',quantity:integer(body.quantity,1),reason};
+    const product=await enteredItem(db,body);check(!isDeliveryItem(product),400,'AS 계열은 품질 관리의 AS 납품 대상 등록을 사용하세요.');reason=text(body.reason,500);after={item_id:product.id,code:text(body.lotCode,80),supplier:text(body.supplier,100),origin:'receipt',quantity:integer(body.quantity,1),reason};
     target=await createLot(db,tx,user,after,stamp);result={id:target};
   }else if(path==='materials/move'){
     before=await lot(db,body);target=before.id;const kind=choice(body.kind,['issue','adjust','dispose']);reason=text(body.reason,500);
@@ -95,6 +105,29 @@ export async function operations(db,tx,user,url,method,body,stamp){
     if(kind==='issue')check(before.status==='released',409,'검사에 합격한 LOT만 출고할 수 있습니다.');
     const status=delta>0?'pending':before.status;after={balance,status,kind,quantity:delta};
     tx.add('UPDATE ops_lots SET balance=?,status=?,version=version+1 WHERE id=?',balance,status,target);movement(tx,user,target,kind,delta,reason,stamp);
+  }else if(path==='quality/deliveries'){
+    const product=await enteredItem(db,body);check(isDeliveryItem(product),400,'품질 직접 등록은 AS 계열만 가능합니다. 부품은 자재 입고 후 검사하세요.');
+    const code=text(body.lotCode,80);
+    check(!await one(db,'SELECT id FROM ops_deliveries WHERE item_id=? AND code=?',product.id,code),409,'이미 등록된 AS 품목·LOT입니다.');
+    check(!await one(db,'SELECT id FROM ops_lots WHERE item_id=? AND code=?',product.id,code),409,'기존 입고·생산 LOT입니다. 입고·생산 LOT 검사에서 처리하세요.');
+    target=crypto.randomUUID();reason=text(body.reason,500);after={item_id:product.id,code,customer:text(body.customer,120),due_date:dueDate(body.dueDate),quantity:integer(body.quantity,1)};
+    tx.add('INSERT INTO ops_deliveries(id,item_id,code,customer,due_date,quantity,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)',target,...Object.values(after),user.id,stamp);result={id:target};
+  }else if(path==='quality/deliveries/inspect'){
+    before=await delivery(db,body);const product=await item(db,before.item_id);check(isDeliveryItem(product),409,'AS 품목 분류를 확인하세요.');choice(body.stage,['shipping']);
+    const sample=integer(body.sample,1,before.quantity),failed=integer(body.failed,0,sample),decision=choice(body.decision,['pass','fail']);
+    check(body.criteriaConfirmed===true,400,'도면·검사기준의 적용 여부를 확인하세요.');check(decision!=='pass'||failed===0,400,'불합격 시료가 있는 LOT를 합격 처리할 수 없습니다.');
+    const criteria=text(body.criteria,5000),measurements=text(body.measurements,3000);reason=text(body.reason,500);target=crypto.randomUUID();
+    after={delivery_id:before.id,sample,failed,decision,criteria,measurements,reason,item_snapshot:canonical(product)};
+    tx.add('INSERT INTO ops_delivery_inspections VALUES(?,?,?,?,?,?,?,?,?,?,?)',target,...Object.values(after),user.id,stamp);
+    tx.add('UPDATE ops_deliveries SET status=?,version=version+1 WHERE id=?',decision==='pass'?'released':'held',before.id);result={id:target};
+  }else if(path==='quality/deliveries/complete'||path==='quality/deliveries/cancel'){
+    before=await delivery(db,body);target=before.id;reason=text(body.reason,500);
+    if(path.endsWith('/complete')){
+      check(before.status==='released',409,'출하검사에 합격한 LOT만 납품 완료로 기록할 수 있습니다.');
+      check(body.deliveryConfirmed===true,400,'LOT 전체의 실제 납품 완료 여부를 확인하세요.');
+      after={status:'delivered',delivered_by:user.id,delivered_at:stamp};
+      tx.add("UPDATE ops_deliveries SET status='delivered',delivered_by=?,delivered_at=?,version=version+1 WHERE id=?",user.id,stamp,target);
+    }else{after={status:'cancelled',reason};tx.add("UPDATE ops_deliveries SET status='cancelled',version=version+1 WHERE id=?",target);}
   }else if(path==='quality/inspect'){
     before=await lot(db,body);const product=await item(db,before.item_id),stage=choice(body.stage,['incoming','process','shipping']),sample=integer(body.sample,1,Math.max(before.balance,1)),failed=integer(body.failed,0,sample),decision=choice(body.decision,['pass','fail']);
     check(before.balance>0,409,'재고가 없는 LOT는 검사할 수 없습니다.');check(body.criteriaConfirmed===true,400,'도면·검사기준의 적용 여부를 확인하세요.');check(decision!=='pass'||failed===0,400,'불합격 시료가 있는 LOT를 합격 처리할 수 없습니다.');
