@@ -20,7 +20,7 @@ test('D1 AS 납품 등록의 감사 저장 실패는 납품 행과 요청 식별
     assert.equal((await a.call('/api/operations/quality/deliveries',body)).status,200);
   }finally{await f.close();}
 });
-test('D1 0009는 기존 품목·재고·생산·계정 내용을 바꾸지 않고 재시작 후에도 유지한다',async()=>{
+test('D1 0009는 기존 품목·재고·생산·계정 내용을 바꾸지 않는다',async()=>{
   const f=await fixture({attendanceMigration:false});try{
     for(const name of ['0005_attendance_reports.sql','0006_paid_break_policy.sql','0007_test_data_reset.sql','0008_operations.sql'])await applySql(f.db,'migrations/'+name);
     const tables=['users','employees','production','audit','ops_items','ops_lots','ops_inspections','ops_requests'];

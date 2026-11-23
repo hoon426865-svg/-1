@@ -43,7 +43,7 @@ class OperationsUpgradeTests(unittest.TestCase):
     def apply_to_fixture(self, name):
         self.db.executescript((self.root / name / 'migration.sql').read_text())
 
-    def test_stage_six_backfills_only_seven_and_eight_preserving_existing_rows(self):
+    def test_stage_six_backfills_seven_through_nine_preserving_existing_rows(self):
         before = {name: upgrade.digest(self.db, name) for name in ['users', 'employees', 'production', 'audit', 'sessions', 'worker_revision']}
         report = self.run_plan()
         self.assertEqual(report['pending_migrations'], ['0007_test_data_reset.sql', '0008_operations.sql', '0009_quality_deliveries.sql'])
@@ -55,13 +55,34 @@ class OperationsUpgradeTests(unittest.TestCase):
         self.assertEqual(again['pending_migrations'], [])
         self.assertEqual((self.root / 'again/migration.sql').read_text(), '')
 
-    def test_stage_seven_applies_only_eight_and_tracks_it_atomically(self):
+    def test_stage_seven_applies_eight_and_nine_and_tracks_them_atomically(self):
         self.db.executescript(upgrade.MIGRATIONS[6].read_text())
         self.db.executescript("CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP); INSERT INTO d1_migrations(name) VALUES('0007_test_data_reset.sql');")
         report = self.run_plan()
         self.assertEqual(report['pending_migrations'], ['0008_operations.sql', '0009_quality_deliveries.sql'])
         self.apply_to_fixture('check')
         self.assertEqual(self.db.execute('SELECT name FROM d1_migrations ORDER BY id').fetchall(), [('0007_test_data_reset.sql',), ('0008_operations.sql',), ('0009_quality_deliveries.sql',)])
+
+    def test_stage_eight_preserves_populated_inventory_and_history_adding_only_nine(self):
+        for file in upgrade.MIGRATIONS[6:8]:
+            self.db.executescript(file.read_text())
+        self.db.executescript("""
+            INSERT INTO ops_items(id,drawing,name,model,kind,unit,supplier,source,criteria,warnings) VALUES('part','GC9-PR-9001','합성 부품','TEST','part','EA','합성 공급자','합성 출처','외관','');
+            INSERT INTO ops_lots(id,item_id,code,supplier,origin,received,balance,status,created_by,created_at) VALUES('lot','part','LOT-1','합성','receipt',12,10,'released','admin','2026-11-09T01:00:00Z');
+            INSERT INTO ops_movements VALUES('m1','lot','receipt',12,'합성 입고','admin','2026-11-09T01:00:00Z');
+            INSERT INTO ops_movements VALUES('m2','lot','issue',-2,'합성 출고','admin','2026-11-09T02:00:00Z');
+            INSERT INTO ops_inspections VALUES('q1','lot','incoming',2,0,'pass','외관','이상 없음','합성 검사','{}','admin','2026-11-09T01:30:00Z');
+            INSERT INTO ops_permissions(user_id,quality) VALUES('u1',1);
+            INSERT INTO ops_requests VALUES('admin','synthetic-operations-request','{}','{}');
+        """)
+        tables = [r[0] for r in self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+        before = {name: upgrade.digest(self.db, name) for name in tables}
+        report = self.run_plan()
+        self.assertEqual(report['pending_migrations'], ['0009_quality_deliveries.sql'])
+        self.apply_to_fixture('check')
+        self.assertEqual(before, {name: upgrade.digest(self.db, name) for name in tables})
+        self.assertEqual(self.db.execute('SELECT count(*) FROM ops_deliveries').fetchone()[0], 0)
+        self.assertEqual(self.run_plan('again', expect_current=True)['pending_migrations'], [])
 
     def test_partial_schema_and_disagreeing_ledger_stop(self):
         self.db.execute('CREATE TABLE ops_items(id TEXT PRIMARY KEY)')

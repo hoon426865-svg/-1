@@ -18,12 +18,18 @@ test('SQLite → D1: 원본 보존·WAL 최신 기록·모든 계정/업무/이�
     assert.equal((await e.call('/api/production',{taskId:'t1',good:7,bad:1,requestKey:old.key()})).status,200);
     const request=(await e.call('/api/work-requests',{type:'annual',startDate:'2026-10-01',endDate:'2026-10-01',allDay:true,reason:"자료 보존 '; 테스트"})).data;
     await a.call('/api/admin/work-requests/decision',{id:request.id,version:request.version,action:'approved',comment:'확인'});
+    const post=async(path,body)=>{const r=await a.call('/api/operations/'+path,{...body,requestKey:old.key()});assert.equal(r.status,200);return r.data;};
+    const item=await post('items',{drawing:'GC9-AS-9001',name:'합성 조립품',model:'TEST',kind:'assembly',unit:'EA',active:true,version:0,reason:'이전 검사'});
+    const delivery=await post('quality/deliveries',{itemId:item.id,lotCode:'MIGRATE-AS',customer:'합성 납품처',quantity:10,reason:'이전 검사'});
+    await post('quality/deliveries/inspect',{id:delivery.id,version:1,stage:'shipping',sample:2,failed:0,decision:'pass',criteria:'합성 기준',measurements:'이상 없음',criteriaConfirmed:true,reason:'이전 검사'});
+    await post('quality/deliveries/complete',{id:delivery.id,version:2,deliveryConfirmed:true,reason:'합성 납품 확인'});
     assert.ok(statSync(source+'-wal').size>0,'Source must have committed WAL rows');
     const before=[fingerprint(source),fingerprint(source+'-wal')];
     execFileSync('python3',['scripts/export-sqlite-d1.py','--source',source,'--out',bundle]);
     assert.deepEqual([fingerprint(source),fingerprint(source+'-wal')],before);
     assert.throws(()=>execFileSync('python3',['scripts/export-sqlite-d1.py','--source',source,'--out',bundle],{stdio:'pipe'}));
     await applySql(f.db,join(bundle,'import.sql'));
+    for(const table of ['ops_deliveries','ops_delivery_inspections'])assert.deepEqual((await f.db.prepare('SELECT * FROM '+table).all()).results.map(r=>({...r})),old.db.prepare('SELECT * FROM '+table).all().map(r=>({...r})));
     const client=f.client();assert.equal((await client.login('001',old.password)).status,200);
     assert.equal((await client.call('/api/state')).data.production[0].good,7);
     assert.equal((await client.call('/api/work-requests')).data[0].status,'approved');
