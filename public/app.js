@@ -1,10 +1,11 @@
 import {mountOperations} from './operations.js';
+import {mountAdminAccounts} from './admin-accounts.js';
 import { totals, needsReview } from './domain.js';
 import { mountWorkRequests } from './work-requests.js';
 import { mountAttendanceReports } from './attendance-reports.js';
 import { mountTestDataReset } from './test-data-reset.js';
 import { collectPages } from './worker-pages.js';
-import { renderPasskeyLogin, authorizePasskeyOperation, showEnrollmentInvite } from './passkeys.js';
+import { renderPasskeyLogin, authorizePasskeyOperation, showEnrollmentInvite, clearEnrollmentInvites } from './passkeys.js';
 import { attendanceStartTime } from './attendance-report.js';
 import { reportAuthFailure } from './auth-diagnostics.js';
 import { mountNavigation, resetNavigation, menuItems } from './navigation.js';
@@ -21,6 +22,7 @@ const notice = message => { document.querySelector('#notice').textContent = mess
 const values = form => Object.fromEntries(new FormData(form));
 
 function clearSession(message = '') {
+  clearEnrollmentInvites();
   epoch++;
   me = null; state = null; selectedDate = '';
   requestPanels.clear();resetNavigation();
@@ -129,6 +131,7 @@ function renderAccount() {
   };
 }
 function renderPassword() {
+  clearEnrollmentInvites();
   state = null;
   requestPanels.clear();resetNavigation();
   renderAccount();
@@ -180,7 +183,7 @@ async function load({afterLogin=false} = {}) {
   if (me && (me.id !== user.id || me.role !== user.role || me.employeeId !== user.employeeId)) {
     // Another tab may have switched the shared login cookie. Never restore
     // the previous account's panels or draft values into this account.
-    requestPanels.clear();screen.replaceChildren();selectedDate='';resetNavigation();
+    clearEnrollmentInvites();requestPanels.clear();screen.replaceChildren();selectedDate='';resetNavigation();
     history.replaceState(null,'',location.pathname+'#home');
   }
   me = {...user,operations:me?.operations};
@@ -211,6 +214,7 @@ function render() {
   screen.querySelector('[data-page="production"] .page-heading').insertAdjacentHTML('afterend','<div data-request-slot="ops-production"></div>');
   for(const [key,label] of [['materials','자재 관리'],['quality','품질 관리']])if(me.operations?.[key])screen.insertAdjacentHTML('beforeend',`<div data-page="${key}" hidden>${heading(label,key==='materials'?'LOT별 입출고·재고와 처리 이력':'검사 결과와 부적합 LOT 관리')}<div data-request-slot="ops-${key}"></div></div>`);
   if(me.role==='admin')screen.querySelector('[data-page="settings"]').insertAdjacentHTML('beforeend','<div data-request-slot="ops-settings"></div>');
+  if(me.role==='admin'&&authMode==='passkey')screen.querySelector('[data-page="settings"] .card').insertAdjacentHTML('afterend','<div data-request-slot="admin-accounts"></div>');
   for (const [mode,panel] of requestPanels) {
     const slot=screen.querySelector(`[data-request-slot="${mode}"]`);
     if (slot) {slot.append(panel.root);panel.refresh({employees:state.employees,today:state.today,tasks:state.tasks});}
@@ -220,11 +224,11 @@ function render() {
   document.querySelector('#settings-logout').onclick=()=>document.querySelector('#logout').click();
   mountNavigation(me,page=>{
     notice('');
-    for(const mode of page==='requests'?['requests']:page==='reports'?['attendance-report','report']:page==='settings'&&me.role==='admin'?['ops-settings','test-reset']:page==='production'?['ops-production']:['materials','quality'].includes(page)?['ops-'+page]:[]){
+    for(const mode of page==='requests'?['requests']:page==='reports'?['attendance-report','report']:page==='settings'&&me.role==='admin'?[...(authMode==='passkey'?['admin-accounts']:[]),'ops-settings','test-reset']:page==='production'?['ops-production']:['materials','quality'].includes(page)?['ops-'+page]:[]){
       if(requestPanels.has(mode))continue;
       const root=document.createElement('div');
       screen.querySelector(`[data-request-slot="${mode}"]`).append(root);
-      const mount=mode.startsWith('ops-')?mountOperations:mode==='test-reset'?mountTestDataReset:mode==='attendance-report'?mountAttendanceReports:mountWorkRequests;
+      const mount=mode==='admin-accounts'?mountAdminAccounts:mode.startsWith('ops-')?mountOperations:mode==='test-reset'?mountTestDataReset:mode==='attendance-report'?mountAttendanceReports:mountWorkRequests;
       const controller=mount({root,api,me,tasks:state.tasks,employees:state.employees,today:state.today,mode,onChange:async()=>{if(mode.startsWith('ops-')){await load();return;}if(mode==='test-reset'){await load();notice('선택한 테스트 기록을 삭제했습니다.');return;}requestPanels.get('report')?.refresh();requestPanels.get('attendance-report')?.refresh();}});
       requestPanels.set(mode,{root,...controller});
     }

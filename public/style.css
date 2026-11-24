@@ -97,3 +97,12 @@ input[type=checkbox]{display:inline-block;width:auto;min-height:auto;margin:0 8p
 .ops-quality-tabs button{flex:1;min-width:180px}.ops-row-actions button{min-height:42px}
 .ops-delivered{background:#e5eef8;color:#264a70}.ops-cancelled{background:#edf0f0;color:#606d73}
 .ops-panel [data-item-match]{margin:0;overflow-wrap:anywhere}
+.admin-accounts-panel .employee-form{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.admin-accounts-panel .employee-form>p,.admin-accounts-panel .ops-check,.admin-accounts-panel .employee-form>button{grid-column:1/-1}
+.admin-accounts-panel textarea{display:block;width:100%;min-height:80px;padding:12px;margin-top:8px;border:1px solid #d5dedf;border-radius:8px;font:inherit}
+.admin-accounts-panel textarea:focus-visible{outline:3px solid #2e8bce;outline-offset:3px}
+.admin-accounts-panel .ops-row{overflow-wrap:anywhere}
+dialog[data-enrollment-invite]{max-width:min(560px,calc(100vw - 32px));border:1px solid #d5e3dc;border-radius:14px;padding:24px;color:#202d34}
+dialog[data-enrollment-invite]::backdrop{background:#10251c66}
+dialog[data-enrollment-invite] button{margin-top:16px;padding:12px 18px;border-radius:8px;background:#1c5949;color:white}
+@media(max-width:700px){.admin-accounts-panel .employee-form{grid-template-columns:1fr}}

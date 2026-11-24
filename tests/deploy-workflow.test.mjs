@@ -48,9 +48,9 @@ globalThis.fetch=async(input)=>{
   if(url.origin!==config.env.preview.vars.APP_ORIGIN)throw Error('Unexpected network target in offline test');
   if(url.pathname==='/healthz')return Response.json({status:'ok'});
   if(url.pathname==='/api/setup')return Response.json({authMode:'passkey',required:false,appOrigin:config.env.preview.vars.APP_ORIGIN});
-  if(['/api/operations/context','/api/status'].includes(url.pathname))return Response.json({}, {status:401});
+  if(['/api/operations/context','/api/status','/api/admin/accounts'].includes(url.pathname))return Response.json({}, {status:401});
   const file=url.pathname==='/login'?'index.html':url.pathname.slice(1);
-  if(!['index.html','app.js','operations.js','operations-domain.js','style.css'].includes(file))throw Error('Unexpected asset in offline test');
+  if(!['index.html','app.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css'].includes(file))throw Error('Unexpected asset in offline test');
   return new Response(readFileSync(join('worker-assets',file)));
 };
 `;
@@ -64,7 +64,7 @@ function workflow(mode){
     cpSync(join(repo,'migrations'),join(source,'migrations'),{recursive:true});
     writeFileSync(join(run,'logs/verify.log'),'Synthetic regression prerequisite');
     writeFileSync(join(source,'package.json'),' {"type":"module"}');
-    for(const file of ['index.html','app.js','operations.js','operations-domain.js','style.css'])writeFileSync(join(source,'worker-assets',file),'synthetic '+file);
+    for(const file of ['index.html','app.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css'])writeFileSync(join(source,'worker-assets',file),'synthetic '+file);
     writeFileSync(join(source,'node_modules/.bin/wrangler'),'#!'+process.execPath+'\n'+fakeWrangler,{mode:0o700});
     writeFileSync(join(source,'offline-network.mjs'),fakeNetwork);
     execFileSync('python3',['-c',String.raw`

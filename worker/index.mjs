@@ -6,7 +6,7 @@ import {saveRequest,decideRequest,listRequests,requestHistory,reportPeriod} from
 import {nextDate} from '../public/attendance-report.js';
 import {listResetItems,prepareReset,executeReset,resetBackups,resetBackup} from './test-data-reset.mjs';
 import {passkeyRoute} from './passkeys.mjs';
-import {adminOptions,provision} from './passkey-admin.mjs';
+import {adminOptions,provision,administrators,provisionAdministrator} from './passkey-admin.mjs';
 import {attendanceReport,adjustAttendance,finalizeAttendance,reportCsvResponse} from './attendance-reports.mjs';
 
 const uuid=()=>crypto.randomUUID();
@@ -170,6 +170,15 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
     if(path==='/api/admin/passkeys/authorize/options'&&method==='POST'){
       check(passkeyMode,404,'패스키 인증이 필요합니다.');return finish(await adminOptions(body,user,env,db,tx,now));
     }
+    if(path==='/api/admin/accounts'&&method==='GET'){
+      check(passkeyMode,404,'패스키 인증이 필요합니다.');return read(await administrators(db,user));
+    }
+    if(path==='/api/admin/accounts'&&method==='POST'){
+      check(passkeyMode,404,'패스키 인증이 필요합니다.');return finish(await provisionAdministrator('create-admin',body,user,env,db,tx,now));
+    }
+    if(path==='/api/admin/accounts/reissue'&&method==='POST'){
+      check(passkeyMode,404,'패스키 인증이 필요합니다.');return finish(await provisionAdministrator('reinvite-admin',body,user,env,db,tx,now));
+    }
     if(path==='/api/admin/passkeys/recover'&&method==='POST'){
       check(passkeyMode,404,'패스키 인증이 필요합니다.');return finish(await provision('recover',body,user,env,db,tx,now));
     }
@@ -258,7 +267,7 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
-  const assets=['/operations-domain.js','/operations.js','/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/test-data-reset.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
+  const assets=['/operations-domain.js','/operations.js','/admin-accounts.js','/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/test-data-reset.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
   check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);

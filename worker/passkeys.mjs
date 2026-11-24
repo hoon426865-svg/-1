@@ -22,7 +22,7 @@ export function canonicalCredentialId(value){
     return canonical;
   }catch{check(false,401,'패스키 ID 형식이 올바르지 않습니다.');}
 }
-function normalizeCredential(response){
+export function normalizeCredential(response){
   const id=canonicalCredentialId(response?.id),rawId=canonicalCredentialId(response?.rawId);
   check(id===rawId,401,'패스키 ID와 원본 ID가 일치하지 않습니다.');
   return {...response,id,rawId};
@@ -38,8 +38,12 @@ export async function enrollmentTicket(value,env,db,now){
   if(/^[A-Za-z0-9_-]{43}$/.test(value)){
     const hash=await digest(value),invite=await one(db,'SELECT * FROM passkey_invites WHERE hash=?',hash);
     check(invite&&!invite.used_at&&invite.expires>now.getTime(),401,'등록권이 만료되었거나 이미 사용되었습니다.');
-    const account=await one(db,'SELECT u.*,e.active FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id=?',invite.user_id);
-    check(account&&account.role==='employee'&&account.active===1&&invite.password_digest===await digest(account.password_hash),401,'계정 상태가 변경되었습니다.');
+    const account=await one(db,'SELECT u.*,e.active,EXISTS(SELECT 1 FROM passkeys p WHERE p.user_id=u.id) has_passkeys,(SELECT role FROM users WHERE id=?) issuer_role FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.id=?',invite.issued_by,invite.user_id);
+    const employee=account?.role==='employee'&&account.active===1;
+    // Online admin invitations can only activate a newly provisioned, unregistered
+    // administrator. They cannot add keys to or recover an existing admin account.
+    const administrator=account?.role==='admin'&&account.employee_id===null&&account.must_change===1&&account.password_hash.startsWith('passkey-only-admin:')&&!account.has_passkeys&&account.issuer_role==='admin';
+    check(account&&(employee||administrator)&&invite.password_digest===await digest(account.password_hash),401,'계정 상태가 변경되었습니다.');
     return {account,hash,invite:true};
   }
   const parts=value.split('.');check(parts.length===3,401,'등록권이 올바르지 않습니다.');
@@ -110,7 +114,7 @@ export async function passkeyRoute(path,body,request,env,db,now,diagnostics={}){
     // UV enrollment replaces the temporary-password requirement, without
     // modifying the preserved hash. All old sessions are revoked.
     tx.add('UPDATE users SET must_change=0 WHERE id=?',ticket.account.id);tx.add('DELETE FROM sessions WHERE user_id=?',ticket.account.id);
-    tx.add('DELETE FROM passkey_challenges WHERE id=?',challenge.id);audit(tx,ticket.account,'passkey_enroll',credential.id,'기존 비밀번호 검증 후 패스키 등록',null,{userId:ticket.account.id},stamp);await tx.commit();
+    tx.add('DELETE FROM passkey_challenges WHERE id=?',challenge.id);audit(tx,ticket.account,'passkey_enroll',credential.id,ticket.invite?'관리자 발급 등록권으로 패스키 등록':'기존 비밀번호 검증 후 패스키 등록',null,{userId:ticket.account.id},stamp);await tx.commit();
     const stored=await one(db,'SELECT id FROM passkeys WHERE id=?',credential.id);
     await credentialDiagnostic(diagnostics.requestId,'register',body.response,response,Boolean(stored));
     return {ok:true,login:ticket.account.login};

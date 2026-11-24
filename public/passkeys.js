@@ -11,14 +11,20 @@ export async function authorizePasskeyOperation(api,operation,details){
   const lib=await passkeyLibrary(),options=await api('/api/admin/passkeys/authorize/options',{operation,details});
   return {challengeId:options.challengeId,response:await lib.startAuthentication({optionsJSON:options.options})};
 }
+export function clearEnrollmentInvites(){
+  for(const dialog of document.querySelectorAll('dialog[data-enrollment-invite]')){
+    dialog.querySelector('input').value='';dialog.close();dialog.remove();
+  }
+}
 export function showEnrollmentInvite(result){
   const dialog=document.createElement('dialog'),heading=document.createElement('h2'),info=document.createElement('p'),input=document.createElement('input'),close=document.createElement('button');
-  heading.textContent='패스키 등록권';info.textContent=`${result.login} 직원의 본인을 확인한 뒤 등록권을 안전하게 전달하세요. 15분 후 만료되며 이 창을 닫으면 다시 표시하지 않습니다.`;
+  clearEnrollmentInvites();dialog.dataset.enrollmentInvite='';
+  heading.textContent=result.role==='admin'?'관리자 패스키 등록권':'패스키 등록권';info.textContent=`로그인 계정: ${result.login}. ${result.role==='admin'?'이 계정은 온워크 전체 관리자 권한을 가집니다. ':''}사용자 본인에게 등록권을 전달하세요. 15분 후 만료되며 이 창을 닫으면 다시 표시하지 않습니다. 받은 사람은 온워크 로그인 화면의 ‘패스키 등록 · 등록권 입력’에서 등록한 뒤, 위 로그인 계정으로 접속하세요.`;
   input.type='text';input.readOnly=true;input.autocomplete='off';input.value=result.enrollmentTicket;input.setAttribute('aria-label','일회용 등록권');close.textContent='전달 완료 · 닫기';
   close.onclick=()=>dialog.close();dialog.onclose=()=>{input.value='';dialog.remove();};dialog.append(heading,info,input,close);document.body.append(dialog);dialog.showModal();input.select();
 }
 export function renderPasskeyLogin(screen,bindForm,api,load,onEnrolled){
-  screen.innerHTML=`<section class="card auth-card"><h1>패스키 로그인</h1><p>계정을 입력하고 기기의 생체인증 또는 PIN으로 로그인하세요.</p><form id="passkey-login"><label>계정<input name="login" autocomplete="username" placeholder="관리자: ADMIN · 직원: 사번" pattern="[A-Za-z0-9-]{1,30}" maxlength="30" required></label><p role="status" aria-live="polite"></p><p role="alert" class="task-error"></p><button class="primary">패스키로 로그인</button></form><details><summary>기존 계정의 패스키 등록</summary><p>기존 비밀번호를 로컬에서 확인한 후 발급받은 일회성 등록권을 사용하세요. 등록 완료 후 패스키로 로그인 버튼을 눌러주세요.</p><form id="passkey-enroll"><label>등록권<input name="ticket" type="password" autocomplete="off" required></label><p role="status" aria-live="polite"></p><p role="alert" class="task-error"></p><button class="secondary">이 기기에 패스키 등록</button></form></details></section>`;
+  screen.innerHTML=`<section class="card auth-card"><h1>패스키 로그인</h1><p>발급받은 계정을 입력하고 기기의 생체인증 또는 PIN으로 로그인하세요. 최초 관리자 계정은 ADMIN입니다.</p><form id="passkey-login"><label>계정<input name="login" autocomplete="username" placeholder="관리자: 발급받은 계정 · 직원: 사번" pattern="[A-Za-z0-9-]{1,30}" maxlength="30" required></label><p role="status" aria-live="polite"></p><p role="alert" class="task-error"></p><button class="primary">패스키로 로그인</button></form><details><summary>패스키 등록 · 등록권 입력</summary><p>온워크 관리자에게 받은 일회용 등록권을 입력하세요. 기존 계정 이전용 등록권도 사용할 수 있습니다. 등록 완료 후 본인 계정으로 패스키 로그인하세요.</p><form id="passkey-enroll"><label>등록권<input name="ticket" type="password" autocomplete="off" required></label><p role="status" aria-live="polite"></p><p role="alert" class="task-error"></p><button class="secondary">이 기기에 패스키 등록</button></form></details></section>`;
   const progress=(form,message)=>{form.querySelector('[role="status"]').textContent=message;};
   const failure=(stage,error,form)=>{
     if(stage.endsWith('-device')){
