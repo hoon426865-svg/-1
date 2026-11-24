@@ -84,7 +84,12 @@ test('도번 생산·중복 제출 방지·연속 입고와 납품 입력·현�
     assert.equal(f.db.prepare('SELECT count(*) n FROM ops_deliveries').get().n,2);
 
     // Review opens one focused form and requires an explicit approve/reject choice.
-    await page.locator('#logout').click();await page.locator('#login-form [name=login]').fill('ADMIN');await page.locator('#login-form [name=password]').fill(f.password);await page.locator('#login-form button').click();await page.locator('#logout').waitFor();
+    // The preserved search draft must be explicitly discarded before logging out.
+    const logoutResponse=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/logout'&&r.request().method()==='POST');
+    const confirmLogout=page.waitForEvent('dialog'),clickedLogout=page.locator('#logout').click();
+    const dialog=await confirmLogout;assert.equal(dialog.type(),'confirm');assert.match(dialog.message(),/작성 중인 내용.*로그아웃/);await dialog.accept();await clickedLogout;
+    assert.equal((await logoutResponse).status(),200);
+    await page.locator('#login-form [name=login]').fill('ADMIN');await page.locator('#login-form [name=password]').fill(f.password);await page.locator('#login-form button').click();await page.locator('#logout').waitFor();
     await nav('production');await page.locator('[data-page="production"] [data-review]').waitFor();
     assert.equal(await page.locator('form[id^="ops-review-"]').count(),0);await page.locator('[data-page="production"] [data-review]').click();form=page.locator('form[id^="ops-review-"]');
     assert.equal(await form.locator('[name=status]').inputValue(),'');await form.locator('[name=reason]').fill('수량과 LOT 확인');assert.equal(await form.evaluate(el=>el.checkValidity()),false);
