@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "온워크",
+  "short_name": "온워크",
+  "description": "출퇴근·생산·자재·품질 업무 관리",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f5f6",
+  "theme_color": "#1c5949",
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icons/onwork-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/onwork-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/onwork-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

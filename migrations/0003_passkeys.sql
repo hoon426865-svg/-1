@@ -1,0 +1,10 @@
+CREATE TABLE passkeys(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,public_key BLOB NOT NULL,counter INTEGER NOT NULL,transports TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE INDEX passkeys_user ON passkeys(user_id);
+CREATE TABLE passkey_challenges(id TEXT PRIMARY KEY,challenge TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('register','login')),user_id TEXT REFERENCES users(id),ticket_hash TEXT,expires INTEGER NOT NULL);
+CREATE TABLE passkey_used_tickets(hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),used_at TEXT NOT NULL);
+CREATE TRIGGER revision_passkeys_insert AFTER INSERT ON passkeys BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkeys_update AFTER UPDATE ON passkeys BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkeys_delete AFTER DELETE ON passkeys BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_challenges_insert AFTER INSERT ON passkey_challenges BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_challenges_delete AFTER DELETE ON passkey_challenges BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;
+CREATE TRIGGER revision_passkey_used_tickets_insert AFTER INSERT ON passkey_used_tickets BEGIN UPDATE worker_revision SET revision=revision+1 WHERE id=1; END;

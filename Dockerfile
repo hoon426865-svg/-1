@@ -6,10 +6,11 @@ COPY lib/ ./lib/
 COPY public/ ./public/
 COPY scripts/ ./scripts/
 COPY tests/ ./tests/
+COPY worker/ ./worker/
 COPY server.mjs storage.mjs ./
 # No production variables or volumes are available/needed for these tests.
 # A failed test fails the image build, before any deployment can start.
-RUN npm run verify
+RUN npm run verify:node
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
