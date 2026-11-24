@@ -24,6 +24,19 @@ jobs:
       - run: npm run verify
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
+      # Only screenshots produced with the isolated synthetic UI test database.
+      - name: Keep synthetic UI review screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onwork-ui-review
+          path: |
+            private/quality-ui/*.png
+            private/ui-navigation-*/admin-desktop.png
+            private/ui-navigation-*/admin-mobile.png
+            private/ui-navigation-*/employee-mobile.png
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Package the tested Worker and static assets
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |

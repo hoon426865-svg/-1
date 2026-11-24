@@ -57,7 +57,7 @@ export async function checkPublicApp(fetcher=fetch,assetRoot='worker-assets'){
   await get('/api/operations/context',401);
   await get('/api/status',401);
   await get('/api/admin/accounts',401);
-  for(const name of ['index.html','app.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png']){
+  for(const name of ['index.html','app.js','catalog-import.js','work-requests.js','worker-pages.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png']){
     const response=await get(name==='index.html'?'/login':'/'+name,200);
     if(name==='manifest.webmanifest')requireCheck(response.headers.get('content-type')?.split(';')[0]==='application/manifest+json','앱 설치 설정 형식 불일치');
     if(name.endsWith('.png'))requireCheck(response.headers.get('content-type')?.split(';')[0]==='image/png','앱 아이콘 형식 불일치');

@@ -208,6 +208,7 @@ async function load({afterLogin=false} = {}) {
 function render() {
   if (!me || !state) return;
   const drafts = captureDrafts(screen);
+  const legacyOpen = Boolean(screen.querySelector('.legacy-production[open]'));
   if (me.role === 'admin') renderAdmin(); else renderEmployee();
   if (!me || !state) return;
   screen.insertAdjacentHTML('beforeend', `<div data-page="requests" hidden>${heading('근무 신청',me.role==='admin'?'직원의 신청을 검토하고 처리 이력을 확인하세요.':'내 근무 변경 신청과 처리 이력을 확인하세요.')}<div data-request-slot="requests"></div></div>${me.role==='admin'?`<div data-page="reports" hidden>${heading('통계·보고서','직원별 월간·연간 기록을 조회하세요.')}<div data-request-slot="attendance-report"></div><div data-request-slot="report"></div></div>`:''}<div data-page="settings" hidden>${heading('설정','현재 로그인한 계정과 앱 정보')}<section class="card"><h2>내 계정</h2><dl class="account-details"><div><dt>계정</dt><dd>${esc(me.login)}</dd></div><div><dt>권한</dt><dd>${me.role==='admin'?'관리자':'직원'}</dd></div><div><dt>로그인 방식</dt><dd>${authMode==='passkey'?'패스키 · 기기 PIN 또는 생체인증':'비밀번호'}</dd></div><div><dt>시간 기준</dt><dd>한국 시간 (Asia/Seoul)</dd></div></dl><div class="employee-actions"><button type="button" class="secondary" id="settings-refresh">최신 자료 불러오기</button><button type="button" class="secondary" id="settings-logout">로그아웃</button></div></section>${me.role==='admin'?'<div data-request-slot="test-reset"></div>':''}</div>`);
@@ -220,6 +221,17 @@ function render() {
     if (slot) {slot.append(panel.root);panel.refresh({employees:state.employees,today:state.today,tasks:state.tasks});}
   }
   restoreDrafts(screen,drafts);
+  const legacy=screen.querySelector('.legacy-production');
+  if(legacy&&(legacyOpen||drafts.has('production-form')))legacy.open=true;
+  const quantityForm=screen.querySelector('#production-form');
+  if(quantityForm){
+    const preview=quantityForm.querySelector('[data-quantity-preview]');
+    const sync=()=>{
+      const good=Number(quantityForm.elements.good.value),bad=Number(quantityForm.elements.bad.value);
+      preview.textContent=quantityForm.elements.good.value!==''&&quantityForm.elements.bad.value!==''&&Number.isSafeInteger(good)&&Number.isSafeInteger(bad)&&good>=0&&bad>=0?`이번에 기록할 수량: 양품 ${good.toLocaleString('ko-KR')} + 불량 ${bad.toLocaleString('ko-KR')} = 총 ${(good+bad).toLocaleString('ko-KR')}개`:'양품과 불량을 0 이상의 정수로 입력하세요.';
+    };
+    quantityForm.addEventListener('input',sync);sync();
+  }
   document.querySelector('#settings-refresh').onclick=()=>document.querySelector('#refresh').click();
   document.querySelector('#settings-logout').onclick=()=>document.querySelector('#logout').click();
   mountNavigation(me,page=>{
@@ -242,10 +254,11 @@ async function save(path, body, message, form) {
 }
 function stat(label, value) { return `<div class="stat"><span>${label}</span><strong>${value.toLocaleString('ko-KR')}</strong></div>`; }
 function attendanceLabel(record) { return !record ? '미출근' : !record.out ? '근무 중' : needsReview(record) ? '야근 검토' : '퇴근 완료'; }
+function attendanceBadge(record) { return `<span class="badge ${!record?'neutral':!record.out?'green':needsReview(record)?'amber':'neutral'}">${attendanceLabel(record)}</span>`; }
 function heading(title,description) { return `<div class="page-heading"><div><h1 tabindex="-1">${title}</h1><p>${esc(description)}</p></div></div>`; }
 function home(person) {
   const admin=me.role==='admin',today=state.attendance.filter(r=>r.date===state.today),sum=totals(state.production,state.today);
-  return `<div data-page="home" hidden>${heading('홈',`${person?person.name+' · ':''}${state.today} 오늘의 업무 현황`)}<section class="card"><h2>오늘의 현황</h2><div class="home-stats">${admin?stat('출근 인원',today.length):`<div class="stat"><span>내 출퇴근</span><strong class="status-value">${attendanceLabel(today[0])}</strong></div>`}${stat('양품',sum.good)}${stat('불량',sum.bad)}${admin?stat('야근 검토',today.filter(needsReview).length):`<div class="stat"><span>기본집계 시작</span><strong>${time(attendanceStartTime(today[0]))}</strong></div>`}</div></section><section class="card"><h2>자주 쓰는 기능</h2><div class="quick-links">${menuItems.filter(item=>['attendance','production','requests',...(admin?['employees','reports']:[])].includes(item.id)).map(item=>`<a href="#${item.id}"><strong>${item.label}</strong><span>${item.description|| (item.id==='employees'?'직원 정보와 계정 관리':'월간·연간 내역 조회')} →</span></a>`).join('')}</div></section></div>`;
+  return `<div data-page="home" hidden>${heading('홈',`${person?person.name+' · ':''}${state.today} 오늘의 업무 현황`)}<section class="card"><h2>오늘의 현황</h2><div class="home-stats">${admin?stat('출근 인원',today.length):`<div class="stat"><span>내 출퇴근</span><strong class="status-value">${attendanceLabel(today[0])}</strong></div>`}${stat('양품',sum.good)}${stat('불량',sum.bad)}${admin?stat('야근 검토',today.filter(needsReview).length):`<div class="stat"><span>기본집계 시작</span><strong>${time(attendanceStartTime(today[0]))}</strong></div>`}</div></section><section class="card"><h2>자주 쓰는 기능</h2><div class="quick-links">${menuItems.filter(item=>['attendance','production','materials','quality','requests',...(admin?['employees','reports']:[])].includes(item.id)&&(!item.permission||me.operations?.[item.permission])).map(item=>`<a href="#${item.id}"><strong>${item.label}</strong><span>${item.description|| ({employees:'직원 정보와 계정 관리',reports:'월간·연간 내역 조회',materials:'도번으로 입고 · 재고 확인',quality:'AS 납품 검사 · 부품 입고 검사'}[item.id]||'업무 화면 열기')}</span></a>`).join('')}</div></section></div>`;
 }
 function renderEmployee() {
   const person = state.employees.find(item => item.id === me.employeeId);
@@ -253,14 +266,14 @@ function renderEmployee() {
   const today = state.attendance.find(item => item.date === state.today);
   const open = state.attendance.find(item => !item.out);
   const sum = totals(state.production, state.today);
-  screen.innerHTML = `${home(person)}<div data-page="attendance" hidden>${heading('출퇴근',`${person.name} · ${person.number} · ${person.team}`)}<section class="card"><h2>오늘 출퇴근</h2><p>${attendanceLabel(today)}</p><div class="clock-pair"><div><span>출근 · 기본집계 시작</span><strong>${time(attendanceStartTime(today))}</strong><span>실제 출근 ${time(today?.in)}</span></div><div><span>퇴근</span><strong>${time(today?.out)}</strong></div></div>
+  screen.innerHTML = `${home(person)}<div data-page="attendance" hidden>${heading('출퇴근',`${person.name} · ${person.number} · ${person.team}`)}<section class="card"><div class="section-heading"><h2>오늘 출퇴근</h2>${attendanceBadge(today)}</div><div class="clock-pair"><div><span>출근 · 기본집계 시작</span><strong>${time(attendanceStartTime(today))}</strong><span>실제 출근 ${time(today?.in)}</span></div><div><span>퇴근</span><strong>${time(today?.out)}</strong></div></div>
     ${open && open.date !== state.today ? `<p>${esc(open.date)}의 미퇴근 기록이 있습니다.</p>` : ''}
     <form id="attendance-form"><div class="button-pair"><button class="primary" name="action" value="in" ${today || open ? 'disabled' : ''}>출근하기</button><button class="secondary" name="action" value="out" ${open ? '' : 'disabled'}>퇴근하기</button></div><p role="alert" class="task-error"></p></form><p class="small">로그인한 본인의 기록을 서버 시각으로 저장합니다.</p></section>
-    <section class="card"><h2>내 출퇴근 기록</h2>${state.attendance.slice().reverse().map(record => `<div class="history-row"><strong>${esc(record.date)}</strong><span>집계 출근 ${time(attendanceStartTime(record))} (실제 ${time(record.in)}) · 퇴근 ${record.outDate && record.outDate !== record.date ? esc(record.outDate) : ''} ${time(record.out)}</span><span>${attendanceLabel(record)}</span></div>`).join('') || '<p class="empty">기록이 없습니다.</p>'}</section>
-</div><div data-page="production" hidden>${heading('생산 관리','작업 수량을 입력하고 내 생산 기록을 확인하세요.')}    <section class="card"><h2>기존 작업별 수량 기록</h2><p class="small">품목·LOT 생산으로 입력한 수량은 다시 입력하지 마세요. 아래 기록은 LOT 재고에 연결되지 않습니다.</p><div class="stats">${stat('오늘 양품', sum.good)}${stat('오늘 불량', sum.bad)}</div>
+    <section class="card"><h2>내 출퇴근 기록</h2>${state.attendance.slice().reverse().map(record => `<div class="history-row"><strong>${esc(record.date)}</strong><span>집계 출근 ${time(attendanceStartTime(record))} (실제 ${time(record.in)}) · 퇴근 ${record.outDate && record.outDate !== record.date ? esc(record.outDate) : ''} ${time(record.out)}</span>${attendanceBadge(record)}</div>`).join('') || '<p class="empty">기록이 없습니다.</p>'}</section>
+</div><div data-page="production" hidden>${heading('생산 관리','작업 수량을 입력하고 내 생산 기록을 확인하세요.')}    <details class="card legacy-production"><summary><strong>간단 수량 기록</strong><span>품목·LOT 미연결 · 필요한 경우에만 사용</span></summary><p class="inline-note">위 품목·LOT 생산과 이 입력 중 하나만 사용하세요. 같은 수량을 두 곳에 입력하면 생산량이 중복됩니다.</p><div class="stats">${stat('오늘 양품', sum.good)}${stat('오늘 불량', sum.bad)}</div>
     <form id="production-form"><label>작업<select name="taskId" required>${state.tasks.map(task => `<option value="${esc(task.id)}">${esc(task.name)}</option>`).join('')}</select></label>
-    <div class="quantity-grid"><label>양품 수량<input name="good" type="number" min="0" max="999999" value="0" required></label><label>불량 수량<input name="bad" type="number" min="0" max="999999" value="0" required></label></div>
-    <p role="alert" class="task-error"></p><button class="primary" ${state.tasks.length ? '' : 'disabled'}>수량 기록하기</button></form></section>
+    <div class="quantity-grid"><label>양품 수량<input name="good" type="number" inputmode="numeric" min="0" max="999999" step="1" value="0" aria-describedby="quantity-preview" required></label><label>불량 수량<input name="bad" type="number" inputmode="numeric" min="0" max="999999" step="1" value="0" aria-describedby="quantity-preview" required></label></div>
+    <p id="quantity-preview" class="quantity-preview" data-quantity-preview role="status" aria-live="polite"></p><p role="alert" class="task-error"></p><button class="primary" ${state.tasks.length ? '' : 'disabled'}>수량 기록하기</button></form></details>
     <section class="card"><h2>내 생산 기록</h2>${state.production.slice().reverse().map(record => `<div class="history-row"><div><strong>${esc(record.task)}</strong><p>${esc(record.date)} · ${time(record.time)}</p></div><span>양품 ${record.good} · 불량 ${record.bad}</span></div>`).join('') || '<p class="empty">기록이 없습니다.</p>'}</section></div>`;
   const form = document.querySelector('#attendance-form');
   form.onsubmit = async event => {
@@ -288,7 +301,7 @@ function renderAdmin() {
   screen.innerHTML = `${home()}<div data-page="attendance" hidden>${heading('출퇴근','날짜별 직원 출퇴근 기록')}${dateField}
     <section class="card"><h2>직원별 출퇴근</h2><div class="table-wrap"><table><thead><tr><th>직원</th><th>기본집계 시작 / 실제 출근</th><th>퇴근</th><th>상태</th></tr></thead><tbody>${state.employees.map(person => {
       const record=records.find(item=>item.employeeId===person.id);
-      return `<tr><td>${esc(person.name)}<span class="team">${esc(person.number)} · ${esc(person.team)}${person.active?'':' · 퇴사'}</span></td><td>${time(attendanceStartTime(record))}<span class="team">실제 ${time(record?.in)}</span></td><td>${record?.outDate&&record.outDate!==record.date?esc(record.outDate):''} ${time(record?.out)}</td><td>${attendanceLabel(record)}</td></tr>`;
+      return `<tr><td>${esc(person.name)}<span class="team">${esc(person.number)} · ${esc(person.team)}${person.active?'':' · 퇴사'}</span></td><td>${time(attendanceStartTime(record))}<span class="team">실제 ${time(record?.in)}</span></td><td>${record?.outDate&&record.outDate!==record.date?esc(record.outDate):''} ${time(record?.out)}</td><td>${attendanceBadge(record)}</td></tr>`;
     }).join('')||'<tr><td colspan="4">등록된 직원이 없습니다.</td></tr>'}</tbody></table></div></section></div>
     <div data-page="employees" hidden>${heading('직원 관리','직원 정보와 계정 관리')}
     <section class="card"><h2>직원 관리</h2><p>${authMode === 'passkey' ? '직원에게 일회용 등록권을 전달하면 본인의 기기에 패스키를 등록할 수 있습니다. 계정 발급과 복구에는 관리자 패스키 재인증이 필요합니다.' : '사번이 로그인 계정이 됩니다. 임시 비밀번호는 첫 로그인 후 변경해야 합니다.'}</p>

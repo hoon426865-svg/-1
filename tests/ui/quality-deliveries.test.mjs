@@ -20,7 +20,7 @@ test('품질 전용 AS 등록·재검사·납품, 도번 입고·초안 보존�
     browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH?{executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH}:{})});
     const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);
     const login=async name=>{await page.goto(f.config.origin);await page.locator('[name=login]').fill(name);await page.locator('[name=password]').fill(f.password);await page.locator('#login-form button').click();await page.locator('#logout').waitFor();};
-    const submit=async(form,path)=>{const previous=await form.elementHandle();const response=page.waitForResponse(r=>r.url().endsWith('/api/operations/'+path)&&r.request().method()==='POST');await form.locator('button.primary').click();const result=await response;assert.equal(result.status(),200,await result.text());await page.waitForFunction(el=>!el.isConnected,previous);await previous.dispose();await page.waitForFunction(()=>document.querySelector('[data-ops-message]')?.textContent==='저장했습니다.');};
+    const submit=async(form,path)=>{const previous=await form.elementHandle();const response=page.waitForResponse(r=>r.url().endsWith('/api/operations/'+path)&&r.request().method()==='POST');await form.locator('button.primary').click();const result=await response;assert.equal(result.status(),200,await result.text());await page.waitForFunction(el=>!el.isConnected,previous);await previous.dispose();await page.waitForFunction(()=>document.querySelector('[data-ops-message]')?.textContent.includes('저장했습니다.'));await page.waitForFunction(()=>!document.querySelector('[data-request-slot] [aria-busy="true"]'));};
     await login('001');await page.locator('#app-navigation a[href="#quality"]').click();await page.locator('#ops-delivery').waitFor();
     assert.equal(await page.locator('#app-navigation a[href="#materials"]').count(),0);
     let form=page.locator('#ops-delivery');
@@ -45,19 +45,19 @@ test('품질 전용 AS 등록·재검사·납품, 도번 입고·초안 보존�
     await page.locator('[data-action="complete"]').click();form=page.locator('#ops-delivery-complete');await form.locator('[name=reason]').fill('실제 납품 확인');assert.equal(await form.evaluate(el=>el.checkValidity()),false);await form.locator('[name=deliveryConfirmed]').check();await submit(form,'quality/deliveries/complete');
     assert.equal(f.db.prepare('SELECT status FROM ops_deliveries').get().status,'delivered');assert.equal(f.db.prepare('SELECT count(*) n FROM ops_delivery_inspections').get().n,2);
     assert.equal(await page.locator('[data-action="inspect"]').count(),0);await page.screenshot({path:resolve(directory,'as-completed.png'),fullPage:true});
-    await page.locator('#logout').click();await login('002');await page.locator('#app-navigation a[href="#materials"]').click();await page.locator('#ops-receive').waitFor({state:'attached'});await page.locator('.ops-detail > summary').first().click();form=page.locator('#ops-receive');
+    await page.locator('#logout').click();await login('002');await page.locator('#app-navigation a[href="#materials"]').click();await page.locator('#ops-receive').waitFor();form=page.locator('#ops-receive');
     assert.equal(await form.locator('select[name=itemId]').count(),0);
     for(const [drawing,error] of [['UNKNOWN',/등록된/],['gc9as9001',/AS 계열/],['gc9sp9002',/여러 개/],['GC9-MO-9003',/사용 중지/]]){await form.locator('[name=drawing]').fill(drawing);assert.match(await form.locator('[name=drawing]').evaluate(el=>el.validationMessage),error);assert.equal(await form.locator('[name=itemId]').inputValue(),'');}
     await form.locator('[name=drawing]').fill('gc9pr9001');assert.equal(await form.locator('[name=supplier]').inputValue(),'합성 공급자');await form.locator('[name=supplier]').fill('이번 입고 공급자');await form.locator('[name=lotCode]').fill('UI-PR-01');await form.locator('[name=quantity]').fill('12');await form.locator('[name=reason]').fill('실물 수량 확인');
     const refreshed=page.waitForResponse(r=>r.url().endsWith('/api/operations/materials/history'));await page.locator('#refresh').click();await refreshed;
     await page.waitForFunction(()=>document.querySelector('#ops-receive [name=supplier]')?.value==='이번 입고 공급자');
     assert.equal(await form.locator('[name=drawing]').inputValue(),'gc9pr9001');assert.equal(await form.locator('[name=itemId]').inputValue(),items['GC9-PR-9001'].id);assert.equal(await form.locator('[name=quantity]').inputValue(),'12');
-    if(!await form.isVisible())await page.locator('.ops-detail > summary').first().click();
+    assert.equal(await form.isVisible(),true);
     await page.screenshot({path:resolve(directory,'drawing-receipt.png'),fullPage:true});await submit(form,'materials/receive');assert.equal(f.db.prepare('SELECT supplier FROM ops_lots').get().supplier,'이번 입고 공급자');
     await page.locator('#logout').click();await login('001');await page.locator('#app-navigation a[href="#quality"]').click();await page.locator('#ops-delivery').waitFor();
     // An untouched AS form does not trigger an unnecessary discard dialog.
     let unexpectedDialog=false;page.once('dialog',async d=>{unexpectedDialog=true;await d.dismiss();});await page.locator('[data-quality-mode="lots"]').click();await page.locator('[data-lot]').click();assert.equal(unexpectedDialog,false);
-    form=page.locator('#ops-inspect');assert.equal(await form.locator('[name=stage]').inputValue(),'incoming');await form.locator('[name=decision]').selectOption('pass');await form.locator('[name=measurements]').fill('수입검사 이상 없음');await form.locator('[name=reason]').fill('입고 검사');await form.locator('[name=criteriaConfirmed]').check();await submit(form,'quality/inspect');
+    form=page.locator('#ops-inspect');assert.equal(await form.locator('[name=stage]').inputValue(),'incoming');await form.locator('[name=sample]').fill('3');await form.locator('[name=decision]').selectOption('pass');await form.locator('[name=measurements]').fill('수입검사 이상 없음');await form.locator('[name=reason]').fill('입고 검사');await form.locator('[name=criteriaConfirmed]').check();await submit(form,'quality/inspect');
     assert.equal(f.db.prepare('SELECT status FROM ops_lots').get().status,'released');assert.deepEqual(errors,[]);
   }finally{await browser?.close();await new Promise(ok=>server.close(ok));f.db.close();}
 });

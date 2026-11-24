@@ -28,6 +28,10 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
       assert.equal(await page.locator('[data-page]:visible').count(),1);
       assert.equal(await page.locator('#app-navigation [aria-current="page"]').getAttribute('href'),'#'+id);
     };
+    const openSimpleProduction=async page=>{
+      const details=page.locator('.legacy-production');
+      if(!await details.evaluate(node=>node.open))await details.locator(':scope > summary').click();
+    };
     const login=async(page,login)=>{
       await page.goto(f.config.origin);
       await page.locator('#login-form [name=login]').fill(login);
@@ -50,6 +54,8 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
       assert.equal(await admin.locator('#app-navigation a').count(),9);
       assert.equal(await employee.locator('#app-navigation a').count(),5);
       assert.equal(await employee.locator('[data-page=employees],[data-page=reports]').count(),0);
+      assert.equal(await admin.locator('.quick-links [href="#materials"],.quick-links [href="#quality"]').count(),2);
+      assert.equal(await employee.locator('.quick-links [href="#materials"],.quick-links [href="#quality"]').count(),0);
       assert.equal((await request(employee,'/api/admin/work-requests/report?year=2026')).status,403);
       assert.equal((await request(employee,'/api/admin/employee',{number:'BAD',name:'차단',team:'차단',reason:'검사'})).status,403);
       const own=(await request(employee,'/api/state')).data;
@@ -62,11 +68,15 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
         await page.goBack();await page.locator('[data-page=attendance]').waitFor({state:'visible'});
         await page.goForward();await page.locator('[data-page=production]').waitFor({state:'visible'});
       }
+      assert.equal(await employee.locator('.legacy-production').evaluate(node=>node.open),false);
+      assert.equal(await employee.locator('#production-form [name=good]').isVisible(),false);
       await nav(admin,'home');await admin.screenshot({path:resolve(screenshots,'admin-desktop.png'),fullPage:true});
     });
 
     await t.test('메뉴·조회·앱 새로고침에서 직원 입력과 관리자 입력 유지',async()=>{
+      await openSimpleProduction(employee);
       await employee.locator('#production-form [name=good]').fill('7');
+      assert.match(await employee.locator('[data-quantity-preview]').innerText(),/총 7개/);
       await nav(employee,'requests');
       await employee.locator('#work-form [name=reason]').fill('작성 중인 휴가 사유');
       await employee.locator('#work-filter button').click();
@@ -74,6 +84,8 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
       const refreshed=employee.waitForResponse(response=>new URL(response.url()).pathname==='/api/work-requests');
       await employee.locator('#settings-refresh').click();await refreshed;
       await nav(employee,'production');assert.equal(await employee.locator('#production-form [name=good]').inputValue(),'7');
+      assert.equal(await employee.locator('.legacy-production').evaluate(node=>node.open),true);
+      assert.match(await employee.locator('[data-quantity-preview]').innerText(),/총 7개/);
       await nav(employee,'requests');assert.equal(await employee.locator('#work-form [name=reason]').inputValue(),'작성 중인 휴가 사유');
       assert.ok(!(await employee.locator('.request-list').textContent()).includes('다른 직원 비공개 신청'));
       await nav(admin,'employees');
@@ -95,9 +107,53 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
       await nav(employee,'requests');
       await employee.locator('#work-form [name=type]').selectOption('annual');
       await employee.locator('#work-form [name=allDay]').selectOption('true');
-      await employee.locator('#work-form button.primary').click();
-      await employee.waitForFunction(()=>document.querySelector('#work-form [name=reason]')?.value==='');
+      const startDate=await employee.locator('#work-form [name=startDate]').inputValue();
+      await employee.locator('#work-form [name=endDate]').fill('2026-10-01');
+      await employee.locator('[data-request-same-day]').click();
+      assert.equal(await employee.locator('#work-form [name=endDate]').inputValue(),startDate);
+      assert.equal(await employee.locator('#work-form [name=startTime]').isDisabled(),true);
+      assert.match(await employee.locator('[data-request-preview]').innerText(),/연차.*종일 부재/);
+      // Hold the real POST and the queued refresh separately to exercise both
+      // sides of submission: locked submitted values, then a new editable draft.
+      let releasePost,postStarted,releaseRefresh,refreshStarted,postReleased=false,refreshReads=0;
+      const heldPost=new Promise(resolve=>{releasePost=resolve;}),postSeen=new Promise(resolve=>{postStarted=resolve;});
+      const heldRefresh=new Promise(resolve=>{releaseRefresh=resolve;}),refreshSeen=new Promise(resolve=>{refreshStarted=resolve;});
+      const submittedBodies=[],workRoute=url=>url.pathname==='/api/work-requests';
+      await employee.route(workRoute,async route=>{
+        if(route.request().method()==='POST'){
+          submittedBodies.push(route.request().postDataJSON());postStarted();await heldPost;
+        }else if(postReleased&&++refreshReads===2){refreshStarted();await heldRefresh;}
+        await route.continue();
+      });
+      try{
+        await employee.locator('#work-form button.primary').click();await postSeen;
+        for(const selector of ['[name=reason]','[name=startDate]','[name=allDay]','[data-request-today]','[data-request-same-day]','button.primary'])assert.equal(await employee.locator('#work-form '+selector).isDisabled(),true);
+        await employee.evaluate(()=>{
+          document.querySelector('#work-form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+          window.__workSlot=document.querySelector('#work-requests').parentElement.parentElement;
+        });
+        await employee.locator('#refresh').click();
+        await employee.waitForFunction(()=>{
+          const panel=document.querySelector('#work-requests');
+          return panel&&panel.parentElement.parentElement!==window.__workSlot;
+        });
+        assert.equal(await employee.locator('#work-form [name=reason]').isDisabled(),true);
+        assert.equal(await employee.locator('#work-form [name=reason]').inputValue(),'작성 중인 휴가 사유');
+        assert.equal(submittedBodies.length,1);
+        assert.equal(submittedBodies[0].startDate,startDate);assert.equal(submittedBodies[0].endDate,startDate);
+        assert.equal(submittedBodies[0].allDay,true);assert.equal(submittedBodies[0].reason,'작성 중인 휴가 사유');
+        postReleased=true;releasePost();await refreshSeen;
+        await employee.waitForFunction(()=>document.querySelector('#work-form [name=reason]')?.value===''&&!document.querySelector('#work-form [name=reason]').disabled);
+        await employee.locator('#work-form [name=reason]').fill('저장 후 다음 신청 초안');
+        await employee.evaluate(()=>{window.__requestFormBeforeRefresh=document.querySelector('#work-form');});
+        const refreshed=employee.waitForResponse(response=>new URL(response.url()).pathname==='/api/work-requests'&&response.request().method()==='GET');
+        releaseRefresh();await refreshed;
+        await employee.waitForFunction(()=>document.querySelector('#work-form')!==window.__requestFormBeforeRefresh&&document.querySelector('#work-form [name=reason]')?.value==='저장 후 다음 신청 초안');
+        assert.equal(submittedBodies.length,1);
+        await employee.locator('#work-form [name=reason]').fill('');
+      }finally{releasePost();releaseRefresh();await employee.unroute(workRoute);}
       const submitted=f.db.prepare("SELECT * FROM work_requests WHERE employee_id='e1'").get();assert.ok(submitted);
+      assert.equal(f.db.prepare("SELECT count(*) n FROM work_requests WHERE employee_id='e1'").get().n,1);
       await nav(admin,'requests');
       const decision=admin.locator(`[data-decision="${submitted.id}"]`);
       await decision.locator('[name=comment]').fill('승인 검증');
@@ -128,6 +184,31 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
       await decision.locator('[name=action] option[value=reopen]').waitFor({state:'attached'});
       await nav(admin,'reports');
       await admin.waitForFunction(()=>document.querySelector('#report-result [data-request-summary] tbody tr')?.textContent.includes('1일'));
+    });
+
+    await t.test('신청 실패 후 초안과 종일 시간 잠금 상태 복원',async()=>{
+      await nav(employee,'requests');
+      await employee.locator('#work-form [name=type]').selectOption('annual');
+      await employee.locator('#work-form [name=allDay]').selectOption('true');
+      await employee.locator('#work-form [name=startDate]').fill('2026-10-02');
+      await employee.locator('#work-form [name=endDate]').fill('2026-10-02');
+      await employee.locator('#work-form [name=reason]').fill('실패 시 보존할 초안');
+      const workRoute=url=>url.pathname==='/api/work-requests';
+      await employee.route(workRoute,route=>route.request().method()==='POST'?route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'합성 서버 일시 오류'})}):route.continue());
+      try{
+        await employee.locator('#work-form button.primary').click();
+        await employee.waitForFunction(()=>document.querySelector('#work-form [role=alert]')?.textContent.includes('합성 서버 일시 오류'));
+        assert.equal(await employee.locator('#work-form [name=reason]').inputValue(),'실패 시 보존할 초안');
+        assert.equal(await employee.locator('#work-form [name=startDate]').inputValue(),'2026-10-02');
+        assert.equal(await employee.locator('#work-form [name=reason]').isDisabled(),false);
+        assert.equal(await employee.locator('#work-form [data-request-today]').isDisabled(),false);
+        assert.equal(await employee.locator('#work-form [name=startTime]').isDisabled(),true);
+        assert.equal(await employee.locator('#work-form [name=endTime]').isDisabled(),true);
+        assert.equal(f.db.prepare("SELECT count(*) n FROM work_requests WHERE employee_id='e1'").get().n,1);
+      }finally{
+        await employee.unroute(workRoute);
+        await employee.evaluate(()=>{const form=document.querySelector('#work-form');form.reset();form.dispatchEvent(new Event('change',{bubbles:true}));});
+      }
     });
 
     await t.test('새로고침 후 오래된 편집 버전의 덮어쓰기 거부',async()=>{
@@ -162,7 +243,7 @@ test('카테고리 화면: 실제 브라우저·권한·입력 보존·반응형
     });
 
     await t.test('브라우저 새로고침 경고·메뉴 복원·로그아웃 후 다른 사용자 분리',async()=>{
-      await nav(employee,'production');await employee.locator('#production-form [name=good]').fill('9');
+      await nav(employee,'production');await openSimpleProduction(employee);await employee.locator('#production-form [name=good]').fill('9');
       let dialogSeen=false;
       employee.once('dialog',async dialog=>{dialogSeen=true;assert.equal(dialog.type(),'beforeunload');await dialog.dismiss();});
       await employee.evaluate(()=>location.reload());

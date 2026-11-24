@@ -32,7 +32,7 @@ test('배포 도구는 최신 활성 버전을 찾고 분할 배포를 거부한
 
 test('배포 후 검사는 기존 인증·접근 제한·배포 파일의 실제 내용을 확인한다',async()=>{
   const root=mkdtempSync(join(tmpdir(),'onwork-deploy-check-'));
-  const files=['index.html','app.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png'];
+  const files=['index.html','app.js','catalog-import.js','work-requests.js','worker-pages.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png'];
   mkdirSync(join(root,'icons'));
   for(const file of files)writeFileSync(join(root,file),'synthetic '+file);
   let mode='valid';
@@ -45,7 +45,7 @@ test('배포 후 검사는 기존 인증·접근 제한·배포 파일의 실제
     return new Response(mode==='stale'||mode==='stale-icon'&&path.endsWith('.png')?'stale asset':readFileSync(join(root,path==='/login'?'index.html':path.slice(1))),{headers:{'content-type':contentType}});
   };
   try{
-    assert.equal((await checkPublicApp(mock,root)).length,17);
+    assert.equal((await checkPublicApp(mock,root)).length,20);
     mode='password';await assert.rejects(checkPublicApp(mock,root),/패스키/);
     mode='public-data';await assert.rejects(checkPublicApp(mock,root),/접속 검사/);
     mode='stale';await assert.rejects(checkPublicApp(mock,root),/파일 불일치/);

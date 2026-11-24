@@ -50,7 +50,7 @@ globalThis.fetch=async(input)=>{
   if(url.pathname==='/api/setup')return Response.json({authMode:'passkey',required:false,appOrigin:config.env.preview.vars.APP_ORIGIN});
   if(['/api/operations/context','/api/status','/api/admin/accounts'].includes(url.pathname))return Response.json({}, {status:401});
   const file=url.pathname==='/login'?'index.html':url.pathname.slice(1);
-  if(!['index.html','app.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png'].includes(file))throw Error('Unexpected asset in offline test');
+  if(!['index.html','app.js','catalog-import.js','work-requests.js','worker-pages.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png'].includes(file))throw Error('Unexpected asset in offline test');
   const contentType=file.endsWith('.png')?'image/png':file.endsWith('.webmanifest')?'application/manifest+json':'text/plain';
   return new Response(readFileSync(join('worker-assets',file)),{headers:{'content-type':contentType}});
 };
@@ -65,7 +65,7 @@ function workflow(mode){
     cpSync(join(repo,'migrations'),join(source,'migrations'),{recursive:true});
     writeFileSync(join(run,'logs/verify.log'),'Synthetic regression prerequisite');
     writeFileSync(join(source,'package.json'),' {"type":"module"}');
-    for(const file of ['index.html','app.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png'])writeFileSync(join(source,'worker-assets',file),'synthetic '+file);
+    for(const file of ['index.html','app.js','catalog-import.js','work-requests.js','worker-pages.js','operations.js','operations-domain.js','admin-accounts.js','passkeys.js','style.css','manifest.webmanifest','icons/onwork-192.png','icons/onwork-512.png','icons/onwork-maskable-512.png','icons/apple-touch-icon.png'])writeFileSync(join(source,'worker-assets',file),'synthetic '+file);
     writeFileSync(join(source,'node_modules/.bin/wrangler'),'#!'+process.execPath+'\n'+fakeWrangler,{mode:0o700});
     writeFileSync(join(source,'offline-network.mjs'),fakeNetwork);
     execFileSync('python3',['-c',String.raw`
