@@ -106,3 +106,9 @@ dialog[data-enrollment-invite]{max-width:min(560px,calc(100vw - 32px));border:1p
 dialog[data-enrollment-invite]::backdrop{background:#10251c66}
 dialog[data-enrollment-invite] button{margin-top:16px;padding:12px 18px;border-radius:8px;background:#1c5949;color:white}
 @media(max-width:700px){.admin-accounts-panel .employee-form{grid-template-columns:1fr}}
+
+.install-guide{max-width:560px;margin:0 auto 20px;text-align:left;font-size:14px;color:#52656b;overflow-wrap:anywhere}
+.install-guide summary{padding:12px;text-align:center;color:#1c5949;font-weight:650;cursor:pointer;min-height:44px;border:1px solid #d5e3dc;border-radius:8px}
+.install-guide summary:focus-visible{outline:3px solid #2e8bce;outline-offset:3px}
+.install-guide p{margin:14px 12px}.install-guide strong{color:#202d34}
+@media(display-mode:standalone){.install-guide{display:none}}

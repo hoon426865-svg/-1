@@ -267,12 +267,15 @@ export async function handle(request,env,clock=()=>new Date(),diagnostics={}){
   if(['/','/employee','/attendance','/production'].includes(path)&&!user)return new Response(null,{status:303,headers:{Location:'/login'}});
   if(path==='/setup'&&!await setupNeeded(db))return new Response(null,{status:303,headers:{Location:'/login'}});
   const pages=['/','/login','/setup','/employee','/attendance','/production','/admin'];
+  const installAssets={'/manifest.webmanifest':'application/manifest+json; charset=utf-8','/icons/onwork-192.png':'image/png','/icons/onwork-512.png':'image/png','/icons/onwork-maskable-512.png':'image/png','/icons/apple-touch-icon.png':'image/png'};
   const assets=['/operations-domain.js','/operations.js','/admin-accounts.js','/app.js','/domain.js','/style.css','/work-requests.js','/worker-pages.js','/passkeys.js','/auth-diagnostics.js','/navigation.js','/drafts.js','/attendance-reports.js','/test-data-reset.js','/attendance-report.js','/attendance-view.js','/vendor/passkeys.js','/vendor/zxing.js'];
-  check(pages.includes(path)||assets.includes(path),404,'페이지를 찾을 수 없습니다.');
+  check(pages.includes(path)||assets.includes(path)||Object.hasOwn(installAssets,path),404,'페이지를 찾을 수 없습니다.');
   await consistent(db,tx.revision);
   const assetUrl=new URL(pages.includes(path)?'/index.html':path,config.origin);
   const asset=await env.ASSETS.fetch(new Request(assetUrl,{method}));
-  return new Response(asset.body,{status:asset.status,headers:asset.headers});
+  const headers=new Headers(asset.headers);
+  if(asset.ok&&Object.hasOwn(installAssets,path))headers.set('Content-Type',installAssets[path]);
+  return new Response(asset.body,{status:asset.status,headers});
 }
 export default {async fetch(request,env){
   let response,failed=false;
